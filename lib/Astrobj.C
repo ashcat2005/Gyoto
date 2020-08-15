@@ -1,5 +1,5 @@
 /*
-    Copyright 2011-2016, 2018-2019 Frederic Vincent, Thibaut Paumard
+    Copyright 2011-2016, 2018-2020 Frederic Vincent, Thibaut Paumard
 
     This file is part of Gyoto.
 
@@ -49,6 +49,8 @@ GYOTO_PROPERTY_METRIC(Generic, Metric, metric,
    "The geometry of space-time at this end of the Universe.")
 GYOTO_PROPERTY_DOUBLE_UNIT(Generic, RMax, rMax,
    "Maximum distance from the centre of mass (geometrical units).")
+GYOTO_PROPERTY_DOUBLE_UNIT(Generic, DeltaMaxInsideRMax, deltaMaxInsideRMax,
+   "Maximum step for Photon integration inside RMax (geometrical units).")
 GYOTO_PROPERTY_BOOL(Generic, Redshift, NoRedshift, redshift,
     "Whether to take redshift into account.")
 GYOTO_PROPERTY_BOOL(Generic, ShowShadow, NoShowShadow, showshadow,
@@ -60,7 +62,7 @@ GYOTO_PROPERTY_END(Generic, Object::properties)
 Generic::Generic(string kin) :
   SmartPointee(), Object(kin),
   __defaultfeatures(0),
-  gg_(NULL), rmax_(DBL_MAX), flag_radtransf_(0),
+  gg_(NULL), rmax_(DBL_MAX), deltamaxinsidermax_(1.), flag_radtransf_(0),
   noredshift_(0), shadow_(0)
 {
 #if GYOTO_DEBUG_ENABLED
@@ -71,7 +73,7 @@ Generic::Generic(string kin) :
 Generic::Generic() :
   SmartPointee(), Object("Default"),
   __defaultfeatures(0),
-  gg_(NULL), rmax_(DBL_MAX), flag_radtransf_(0),
+  gg_(NULL), rmax_(DBL_MAX), deltamaxinsidermax_(1.), flag_radtransf_(0),
   noredshift_(0), shadow_(0)
 {
 #if GYOTO_DEBUG_ENABLED
@@ -82,7 +84,7 @@ Generic::Generic() :
 Generic::Generic(double radmax) :
   SmartPointee(), Object("Default"),
   __defaultfeatures(0),
-  gg_(NULL), rmax_(radmax), flag_radtransf_(0),
+  gg_(NULL), rmax_(radmax), deltamaxinsidermax_(1.), flag_radtransf_(0),
   noredshift_(0), shadow_(0)
 {
 #if GYOTO_DEBUG_ENABLED
@@ -95,6 +97,7 @@ Generic::Generic(const Generic& orig) :
   __defaultfeatures(orig.__defaultfeatures),
   gg_(NULL),
   rmax_(orig.rmax_),
+  deltamaxinsidermax_(orig.deltamaxinsidermax_),
   flag_radtransf_(orig.flag_radtransf_),
   noredshift_(orig.noredshift_), shadow_(orig.shadow_)
 {
@@ -132,6 +135,13 @@ double Generic::rMax(string const &unit) const {
 void Generic::rMax(double val) { rmax_=val; }
 void Generic::rMax(double val, string const &unit) {
   rMax(Units::ToGeometrical(val, unit, gg_)); }
+
+double Generic::deltaMaxInsideRMax() const { return deltamaxinsidermax_; }
+double Generic::deltaMaxInsideRMax(string const &unit) const {
+  return Units::FromGeometrical(deltaMaxInsideRMax(), unit, gg_); }
+void Generic::deltaMaxInsideRMax(double val) { deltamaxinsidermax_=val; }
+void Generic::deltaMaxInsideRMax(double val, string const &unit) {
+  deltaMaxInsideRMax(Units::ToGeometrical(val, unit, gg_)); }
 
 #ifdef GYOTO_USE_XERCES
 void Generic::setParameters(FactoryMessenger *fmp) {
@@ -752,7 +762,7 @@ double Generic::deltaMax(double coord[8]) {
     GYOTO_ERROR("Incompatible coordinate kind in Astrobj.C");
   }
 
-  if (rr<rMax()) h1max=1.; else h1max=rr*0.5;
+  if (rr<rMax()) h1max=deltamaxinsidermax_; else h1max=rr*0.5;
   return h1max;
 }
 
@@ -767,7 +777,7 @@ GYOTO_GETSUBCONTRACTOR(Astrobj)
 Astrobj::Properties::Properties() :
   intensity(NULL), time(NULL), distance(NULL),
   first_dmin(NULL), first_dmin_found(0),
-  redshift(NULL),
+  redshift(NULL), nbcrosseqplane(NULL),
   spectrum(NULL), stokesQ(NULL), stokesU(NULL), stokesV(NULL),
   binspectrum(NULL), offset(1), impactcoords(NULL),
   user1(NULL), user2(NULL), user3(NULL), user4(NULL), user5(NULL)
@@ -781,7 +791,7 @@ Astrobj::Properties::Properties() :
 Astrobj::Properties::Properties( double * I, double * t) :
   intensity(I), time(t), distance(NULL),
   first_dmin(NULL), first_dmin_found(0),
-  redshift(NULL),
+  redshift(NULL), nbcrosseqplane(NULL),
   spectrum(NULL), stokesQ(NULL), stokesU(NULL), stokesV(NULL),
   binspectrum(NULL), offset(1), impactcoords(NULL),
   user1(NULL), user2(NULL), user3(NULL), user4(NULL), user5(NULL)
@@ -793,11 +803,12 @@ Astrobj::Properties::Properties( double * I, double * t) :
 {}
 
 void Astrobj::Properties::init(size_t nbnuobs) {
-  if (intensity)  *intensity  = 0.;
-  if (time)       *time       = DBL_MAX;
-  if (distance)   *distance   = DBL_MAX;
-  if (first_dmin){*first_dmin = DBL_MAX; first_dmin_found=0;}
-  if (redshift)   *redshift   = 0.;
+  if (intensity)      *intensity  = 0.;
+  if (time)           *time       = DBL_MAX;
+  if (distance)       *distance   = DBL_MAX;
+  if (first_dmin){    *first_dmin = DBL_MAX; first_dmin_found=0;}
+  if (redshift)       *redshift   = 0.;
+  if (nbcrosseqplane) *nbcrosseqplane   = 0.;
   if (spectrum) for (size_t ii=0; ii<nbnuobs; ++ii) spectrum[ii*offset]=0.;
   if (stokesQ)  for (size_t ii=0; ii<nbnuobs; ++ii) stokesQ [ii*offset]=0.;
   if (stokesU)  for (size_t ii=0; ii<nbnuobs; ++ii) stokesU [ii*offset]=0.;
@@ -805,11 +816,11 @@ void Astrobj::Properties::init(size_t nbnuobs) {
   if (binspectrum) for (size_t ii=0; ii<nbnuobs; ++ii)
 		     binspectrum[ii*offset]=0.;
   if (impactcoords) for (size_t ii=0; ii<16; ++ii) impactcoords[ii]=DBL_MAX;
-  if (user1)      *user1=0.;
-  if (user2)      *user2=0.;
-  if (user3)      *user3=0.;
-  if (user4)      *user4=0.;
-  if (user5)      *user5=0.;
+  if (user1)          *user1=0.;
+  if (user2)          *user2=0.;
+  if (user3)          *user3=0.;
+  if (user4)          *user4=0.;
+  if (user5)          *user5=0.;
 }
 
 #ifdef HAVE_UDUNITS
@@ -845,22 +856,23 @@ void Astrobj::Properties::binSpectrumConverter(string unit) {
 #endif
 
 Astrobj::Properties& Astrobj::Properties::operator+=(ptrdiff_t ofset) {
-  if (intensity)    intensity    += ofset;
-  if (time)         time         += ofset;
-  if (distance)     distance     += ofset;
-  if (first_dmin)   first_dmin   += ofset;
-  if (redshift)     redshift     += ofset;
-  if (spectrum)     spectrum     += ofset;
-  if (stokesQ)      stokesQ      += ofset;
-  if (stokesU)      stokesU      += ofset;
-  if (stokesV)      stokesV      += ofset;
-  if (binspectrum)  binspectrum  += ofset;
-  if (impactcoords) impactcoords += 16*ofset;
-  if (user1)        user1        += ofset;
-  if (user2)        user2        += ofset;
-  if (user3)        user3        += ofset;
-  if (user4)        user4        += ofset;
-  if (user5)        user5        += ofset;
+  if (intensity)      intensity      += ofset;
+  if (time)           time           += ofset;
+  if (distance)       distance       += ofset;
+  if (first_dmin)     first_dmin     += ofset;
+  if (redshift)       redshift       += ofset;
+  if (nbcrosseqplane) nbcrosseqplane += ofset;
+  if (spectrum)       spectrum       += ofset;
+  if (stokesQ)        stokesQ        += ofset;
+  if (stokesU)        stokesU        += ofset;
+  if (stokesV)        stokesV        += ofset;
+  if (binspectrum)    binspectrum    += ofset;
+  if (impactcoords)   impactcoords   += 16*ofset;
+  if (user1)          user1          += ofset;
+  if (user2)          user2          += ofset;
+  if (user3)          user3          += ofset;
+  if (user4)          user4          += ofset;
+  if (user5)          user5          += ofset;
   return *this;
 }
 
@@ -872,22 +884,23 @@ Astrobj::Properties& Astrobj::Properties::operator++() {
 Astrobj::Properties::operator Quantity_t () const {
   Quantity_t res=GYOTO_QUANTITY_NONE;
 
-  if (intensity)    res |= GYOTO_QUANTITY_INTENSITY;
-  if (time)         res |= GYOTO_QUANTITY_EMISSIONTIME;
-  if (distance)     res |= GYOTO_QUANTITY_MIN_DISTANCE;
-  if (first_dmin)   res |= GYOTO_QUANTITY_FIRST_DMIN;
-  if (redshift)     res |= GYOTO_QUANTITY_REDSHIFT;
-  if (spectrum)     res |= GYOTO_QUANTITY_SPECTRUM;
-  if (stokesQ)      res |= GYOTO_QUANTITY_SPECTRUM_STOKES_Q;
-  if (stokesU)      res |= GYOTO_QUANTITY_SPECTRUM_STOKES_U;
-  if (stokesV)      res |= GYOTO_QUANTITY_SPECTRUM_STOKES_V;
-  if (binspectrum)  res |= GYOTO_QUANTITY_BINSPECTRUM;
-  if (impactcoords) res |= GYOTO_QUANTITY_IMPACTCOORDS;
-  if (user1)        res |= GYOTO_QUANTITY_USER1;
-  if (user2)        res |= GYOTO_QUANTITY_USER2;
-  if (user3)        res |= GYOTO_QUANTITY_USER3;
-  if (user4)        res |= GYOTO_QUANTITY_USER4;
-  if (user5)        res |= GYOTO_QUANTITY_USER5;
+  if (intensity)      res |= GYOTO_QUANTITY_INTENSITY;
+  if (time)           res |= GYOTO_QUANTITY_EMISSIONTIME;
+  if (distance)       res |= GYOTO_QUANTITY_MIN_DISTANCE;
+  if (first_dmin)     res |= GYOTO_QUANTITY_FIRST_DMIN;
+  if (redshift)       res |= GYOTO_QUANTITY_REDSHIFT;
+  if (nbcrosseqplane) res |= GYOTO_QUANTITY_NBCROSSEQPLANE;
+  if (spectrum)       res |= GYOTO_QUANTITY_SPECTRUM;
+  if (stokesQ)        res |= GYOTO_QUANTITY_SPECTRUM_STOKES_Q;
+  if (stokesU)        res |= GYOTO_QUANTITY_SPECTRUM_STOKES_U;
+  if (stokesV)        res |= GYOTO_QUANTITY_SPECTRUM_STOKES_V;
+  if (binspectrum)    res |= GYOTO_QUANTITY_BINSPECTRUM;
+  if (impactcoords)   res |= GYOTO_QUANTITY_IMPACTCOORDS;
+  if (user1)          res |= GYOTO_QUANTITY_USER1;
+  if (user2)          res |= GYOTO_QUANTITY_USER2;
+  if (user3)          res |= GYOTO_QUANTITY_USER3;
+  if (user4)          res |= GYOTO_QUANTITY_USER4;
+  if (user5)          res |= GYOTO_QUANTITY_USER5;
 
   return res;
 }

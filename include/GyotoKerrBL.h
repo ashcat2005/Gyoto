@@ -95,14 +95,14 @@ class Gyoto::Metric::KerrBL : public Metric::Generic {
   
   virtual double getPotential(double const pos[4], double l_cst) const;
 
-  void gmunu(double g[4][4], const double * pos) const ;
-  double gmunu(const double * const x, int mu, int nu) const ;
+  void gmunu(double ARGOUT_ARRAY2[4][4], const double IN_ARRAY1[4]) const ;
+  double gmunu(double const x[4], int mu, int nu) const ;
 
   /** 
    * \brief g<SUP>&mu;,&nu;</SUP>
    */
-  void gmunu_up(double gup[4][4], const double * pos) const ;
-  double gmunu_up(const double * const x, int mu, int nu) const ;
+  void gmunu_up(double ARGOUT_ARRAY2[4][4], const double IN_ARRAY1[4]) const ;
+  double gmunu_up(double const x[4], int mu, int nu) const ;
  
   using Generic::christoffel;
   int christoffel(double dst[4][4][4], const double pos[4]) const ;
@@ -117,6 +117,8 @@ class Gyoto::Metric::KerrBL : public Metric::Generic {
   //  std::ostream& print(std::ostream&) const ;
   virtual void circularVelocity(double const pos[4], double vel [4],
 				double dir=1.) const ;
+
+  virtual void zamoVelocity(double const pos[4], double vel[4]) const ;
 
  public:
   virtual void MakeCoord(const double coordin[8], const double cst[5], double coordout[8]) const ;
@@ -170,10 +172,10 @@ class Gyoto::Metric::KerrBL : public Metric::Generic {
   void setParticleProperties(Worldline* line, const double* coord) const;
   virtual int isStopCondition(double const * const coord) const;
   
-  void observerTetrad(std::string const obskind,
-		      double const pos[4], double fourvel[4],
-		      double screen1[4], double screen2[4], 
-		      double screen3[4]) const;
+  virtual void observerTetrad(double const pos[4], double fourvel[4],
+			      double screen1[4], double screen2[4],
+			      double screen3[4]) const ;
+
 };
 
 #endif

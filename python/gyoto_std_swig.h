@@ -1,4 +1,6 @@
 // include Metric headers
+#include "GyotoComplexMetric.h"
+#include "GyotoShift.h"
 #include "GyotoKerrBL.h"
 #include "GyotoKerrKS.h"
 #include "GyotoMinkowski.h"
@@ -15,6 +17,7 @@
 #include "GyotoTorus.h"
 #include "GyotoOscilTorus.h"
 #include "GyotoThinDisk.h"
+#include "GyotoThickDisk.h"
 #include "GyotoPageThorneDisk.h"
 #include "GyotoThinDiskPL.h"
 #include "GyotoPolishDoughnut.h"

@@ -1,5 +1,5 @@
 /*
-    Copyright 2011-2018 Thibaut Paumard, Frederic Vincent
+    Copyright 2011-2020 Thibaut Paumard, Frederic Vincent
 
     This file is part of Gyoto.
 
@@ -24,7 +24,6 @@
 #include "GyotoKerrBL.h"
 
 #include <iostream>
-#include <cstdlib>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -76,7 +75,7 @@ GYOTO_PROPERTY_DOUBLE_UNIT(Screen, FreqObs, freqObs,
 GYOTO_PROPERTY_STRING(Screen, AngleKind, anglekind,
 		      "\"EquatorialAngles\" (default), \"SphericalAngles\" or \"Rectilinear\".")
 GYOTO_PROPERTY_STRING(Screen, ObserverKind, observerKind,
-		      "\"ObserverAtInfinity\" (default), \"KeplerianObserver\" or \"ZAMO\".")
+		      "\"ObserverAtInfinity\" (default), \"KeplerianObserver\", \"ZAMO\", \"VelocitySpecified\" or \"FullySpecified\".")
 GYOTO_PROPERTY_FILENAME(Screen, Mask, maskFile,
 			"FITS file to use as mask.")
 GYOTO_PROPERTY_VECTOR_DOUBLE(Screen, FourVelocity, fourVel, "4-velocity of observer.")
@@ -95,7 +94,7 @@ tobs_(0.), fov_(M_PI*0.1), azimuthal_fov_(2.*M_PI),
   dangle1_(0.), dangle2_(0.),
   gg_(NULL), spectro_(NULL),
   freq_obs_(1.),
-  observerkind_("ObserverAtInfinity")
+  observerkind_(GYOTO_OBSKIND_ATINFINITY)
 {
 # if GYOTO_DEBUG_ENABLED
   GYOTO_DEBUG_EXPR(dmax_);
@@ -331,10 +330,35 @@ void Screen::setObserverPos(const double coord[4]) {
 }
 
 void Screen::observerKind(const string &kind) {
-  observerkind_=kind;
+  if(kind == "ObserverAtInfinity")
+    observerkind_ = GYOTO_OBSKIND_ATINFINITY;
+  else if(kind == "KeplerianObserver")
+    observerkind_ = GYOTO_OBSKIND_KEPLERIAN;
+  else if(kind == "ZAMO")
+    observerkind_ = GYOTO_OBSKIND_ZAMO;
+  else if(kind == "VelocitySpecified")
+    observerkind_ = GYOTO_OBSKIND_VELOCITYSPECIFIED;
+  else if(kind == "FullySpecified")
+    observerkind_ = GYOTO_OBSKIND_FULLYSPECIFIED;
+  else
+    throwError("unknown observer kind");
 }
 string Screen::observerKind() const {
-  return observerkind_;
+  switch (observerkind_) {
+  case GYOTO_OBSKIND_ATINFINITY:
+    return "ObserverAtInfinity";
+  case GYOTO_OBSKIND_KEPLERIAN:
+    return "KeplerianObserver";
+  case GYOTO_OBSKIND_ZAMO:
+    return "ZAMO";
+  case GYOTO_OBSKIND_VELOCITYSPECIFIED:
+    return "VelocitySpecified";
+  case GYOTO_OBSKIND_FULLYSPECIFIED:
+    return "FullySpecified";
+  default:
+    throwError("unknown observer kind tag");
+  }
+  return "will not reach here, this line to avoid compiler warning";
 }
 
 void Screen::setFourVel(const double coord[4]) {
@@ -512,7 +536,6 @@ void Screen::getRayCoord(double angle1, double angle2,
 			 double coord[]) const
 
 {
-  angle1+=dangle1_; angle2+=dangle2_; // Screen orientation
   double normtol=1e-10;
   int i; // dimension : 0, 1, 2
   double pos[4];
@@ -521,11 +544,24 @@ void Screen::getRayCoord(double angle1, double angle2,
 # endif
   getObserverPos(coord);
 
-  if (coord[1] > dmax_) {
+  double robs = distance_ / gg_->unitLength();
+
+  if (robs > dmax_) {
     // scale
-    coord[0] -= coord[1] - dmax_;
-    double scale = coord[1] / dmax_;
-    coord[1] = dmax_;
+    coord[0] -= robs - dmax_;
+    double scale = robs / dmax_;
+    switch(gg_->coordKind()) {
+    case GYOTO_COORDKIND_SPHERICAL:
+      coord[1] = dmax_;
+      break;
+    case GYOTO_COORDKIND_CARTESIAN:
+      coord[1] /= scale;
+      coord[2] /= scale;
+      coord[3] /= scale;
+      break;
+    default:
+      throwError("Unimplemented coordkind");
+    }
     angle1 *= scale;
     angle2 *= scale;
   }
@@ -540,8 +576,8 @@ void Screen::getRayCoord(double angle1, double angle2,
       GYOTO screen labelled by spherical
       angles a and b (see Fig. in user guide)
      */
-    spherical_angle_a = angle1;
-    spherical_angle_b = angle2;
+    spherical_angle_a = angle1+dangle1_;
+    spherical_angle_b = angle2+dangle2_;
     break;
   case rectilinear:
     spherical_angle_a = atan(sqrt(angle1*angle1+angle2*angle2));
@@ -620,9 +656,28 @@ void Screen::getRayCoord(double angle1, double angle2,
   double vel[3]={-sin(spherical_angle_a)*cos(spherical_angle_b),
 		 -sin(spherical_angle_a)*sin(spherical_angle_b),
 		 -cos(spherical_angle_a)};
+  if (anglekind_ != spherical_angles) {
+    // Rotate around Y by dangle1, then around new X by dangle2
+    double c, s; sincos(dangle1_, &s, &c);
+    double vel_rot[3]={c*vel[0]+s*vel[2],
+		       vel[1],
+		       -s*vel[0]+c*vel[2]};
+    sincos(dangle2_, &s, &c);
+    vel[0]=vel_rot[0];
+    vel[1]=c*vel_rot[1]-s*vel_rot[2];
+    vel[2]=s*vel_rot[1]+c*vel_rot[2];
+    if (observerkind_!=GYOTO_OBSKIND_ATINFINITY){
+      // Apply PALN
+      sincos(M_PI-euler_[0], &s, &c);
+      vel_rot[1]=vel[1];
+      vel_rot[2]=vel[2];
+      vel[0]=(c*vel_rot[0]-s*vel_rot[1]);
+      vel[1]=(s*vel_rot[0]+c*vel_rot[1]);
+    }
+  }
   // 4-vector tangent to photon geodesic
   
-  if (fourvel_[0]==0. && observerkind_=="ObserverAtInfinity"){
+  if (observerkind_==GYOTO_OBSKIND_ATINFINITY){
     /* 
        ---> Observer local frame not given in XML <---
        Assume observer static at infinity ("standard Gyoto")
@@ -681,7 +736,7 @@ void Screen::getRayCoord(double angle1, double angle2,
     // 0-component of photon tangent 4-vector found by normalizing
     gg_ -> nullifyCoord(coord);
     
-  }else{    
+  } else {
     /* 
        ---> Observer local frame given in XML <---
        Express photon tangent 4-vector in the observer basis
@@ -694,98 +749,50 @@ void Screen::getRayCoord(double angle1, double angle2,
 	GYOTO_ERROR("Please move Screen away from z-axis");
     }
 
-    if (fourvel_[0]!=0. && observerkind_!="ObserverAtInfinity"){
-      GYOTO_ERROR("In Screen:getRayCoord: "
-		 " choose an implemented observer kind OR"
-		 " explicitly give the local tetrad in the XML");
-    }
+    // Implemented observer specifid in XML, local tetrad computed by Metric
+    const double fourpos[4]={coord[0],coord[1],coord[2],coord[3]};
+    double fourvel[4], screen1[4], screen2[4], screen3[4];
+    memcpy(fourvel, fourvel_, 4*sizeof(double));
+    memcpy(screen1, screen1_, 4*sizeof(double));
+    memcpy(screen2, screen2_, 4*sizeof(double));
+    memcpy(screen3, screen3_, 4*sizeof(double));
+    gg_ -> observerTetrad(observerkind_,fourpos,fourvel,screen1,
+			  screen2,screen3);
 
-    if (fourvel_[0]==0){
-      // Implemented observer specifid in XML, local tetrad computed by Metric
-      const double fourpos[4]={coord[0],coord[1],coord[2],coord[3]};
-      double fourvel[4], screen1[4], screen2[4], screen3[4];
-      gg_ -> observerTetrad(observerkind_,fourpos,fourvel,screen1,
-			    screen2,screen3);
+    /* Photon tagent 4-vector l defined by: l = p + fourvel_
+       where p gives the direction of the photon
+       in the observer's rest space (orthogonal to fourvel).
+       Here we choose the particular tangent 4-vector l
+       that satisfies l.fourvel_=-1
+       Then l = fourvel_ + (orthogonal proj of l onto rest space)
+       = fourvel_ + p
+       and p = vel[0]*screen1_ + vel[1]*screen2_ + vel[2]*screen3_
+       with p.p = 1, thus l.l = 0 as it should
+    */
 
-      /*cout << "Vectors in Screen: " << setprecision(17) << endl;
-      for (int ii=0;ii<4;ii++) cout << fourvel[ii] << " ";
-      cout << endl;
-      for (int ii=0;ii<4;ii++) cout << screen1[ii] << " ";
-      cout << endl;
-      for (int ii=0;ii<4;ii++) cout << screen2[ii] << " ";
-      cout << endl;
-      for (int ii=0;ii<4;ii++) cout << screen3[ii] << " ";
-      cout << endl;*/
-
-      /* Photon tagent 4-vector l defined by: l = p + fourvel_
-	 where p gives the direction of the photon
-	 in the observer's rest space (orthogonal to fourvel).
-	 Here we choose the particular tangent 4-vector l
-	 that satisfies l.fourvel_=-1
-	 Then l = fourvel_ + (orthogonal proj of l onto rest space)
-	 = fourvel_ + p
-	 and p = vel[0]*screen1_ + vel[1]*screen2_ + vel[2]*screen3_ 
-	 with p.p = 1, thus l.l = 0 as it should
-      */
-      
-      coord[4]=vel[0]*screen1[0]
-	+vel[1]*screen2[0]
-	+vel[2]*screen3[0]
-	+fourvel[0];
-      coord[5]=vel[0]*screen1[1]
-	+vel[1]*screen2[1]
-	+vel[2]*screen3[1]
-	+fourvel[1];
-      coord[6]=vel[0]*screen1[2]
-	+vel[1]*screen2[2]
-	+vel[2]*screen3[2]
-	+fourvel_[2];
-      coord[7]=vel[0]*screen1[3]
-	+vel[1]*screen2[3]
-	+vel[2]*screen3[3]
-	+fourvel[3];
-    }else{
-      // Local tetrad given by the user in the XML file. Check it.
-      if (fabs(gg_->ScalarProd(coord,fourvel_,fourvel_)+1.)>normtol ||
-	  fabs(gg_->ScalarProd(coord,screen1_,screen1_)-1.)>normtol ||
-	  fabs(gg_->ScalarProd(coord,screen2_,screen2_)-1.)>normtol ||
-	  fabs(gg_->ScalarProd(coord,screen3_,screen3_)-1.)>normtol){
-	cout << "norm= " << gg_->ScalarProd(coord,fourvel_,fourvel_) << " " << gg_->ScalarProd(coord,screen1_,screen1_) << " " << gg_->ScalarProd(coord,screen2_,screen2_) << " " << gg_->ScalarProd(coord,screen3_,screen3_) << endl;
-	GYOTO_ERROR("In Screen:getRayCoord: observer's local"
-		   " basis is not properly normalized");
-      }
-      
-      if (fabs(gg_->ScalarProd(coord,fourvel_,screen1_))>normtol ||
-	  fabs(gg_->ScalarProd(coord,fourvel_,screen2_))>normtol ||
-	  fabs(gg_->ScalarProd(coord,fourvel_,screen3_))>normtol ||
-	  fabs(gg_->ScalarProd(coord,screen1_,screen2_))>normtol ||
-	  fabs(gg_->ScalarProd(coord,screen1_,screen3_))>normtol ||
-	  fabs(gg_->ScalarProd(coord,screen2_,screen3_))>normtol)
-	GYOTO_ERROR("In Screen:getRayCoord: observer's local"
-		   " basis is not orthogonal");
-     
-      coord[4]=vel[0]*screen1_[0]
-	+vel[1]*screen2_[0]
-	+vel[2]*screen3_[0]
-	+fourvel_[0];
-      coord[5]=vel[0]*screen1_[1]
-	+vel[1]*screen2_[1]
-	+vel[2]*screen3_[1]
-	+fourvel_[1];
-      coord[6]=vel[0]*screen1_[2]
-	+vel[1]*screen2_[2]
-	+vel[2]*screen3_[2]
-	+fourvel_[2];
-      coord[7]=vel[0]*screen1_[3]
-	+vel[1]*screen2_[3]
-	+vel[2]*screen3_[3]
-	+fourvel_[3];
-    }
-    if (fabs(gg_->ScalarProd(coord,coord+4,coord+4))>normtol){
-      GYOTO_ERROR("In Screen::getRayCoord: "
-		 " tangent 4-vector to photon not properly normalized");
-    }
-    
+    coord[4]=vel[0]*screen1[0]
+      +vel[1]*screen2[0]
+      +vel[2]*screen3[0]
+      +fourvel[0];
+    coord[5]=vel[0]*screen1[1]
+      +vel[1]*screen2[1]
+      +vel[2]*screen3[1]
+      +fourvel[1];
+    coord[6]=vel[0]*screen1[2]
+      +vel[1]*screen2[2]
+      +vel[2]*screen3[2]
+      +fourvel[2];
+    coord[7]=vel[0]*screen1[3]
+      +vel[1]*screen2[3]
+      +vel[2]*screen3[3]
+      +fourvel[3];
+  }
+  if (fabs(gg_->ScalarProd(coord,coord+4,coord+4))>normtol){
+    GYOTO_SEVERE << "In Screen::getRayCoord: "
+		 << "tangent 4-vector to photon not properly normalized: "
+		 << "norm = "
+		 << gg_->ScalarProd(coord,coord+4,coord+4)
+		 << endl;
   }
 }
 
@@ -918,6 +925,7 @@ void Screen::fitsWriteMask(string const &fname) {
 #endif
 
 bool Screen::operator()(size_t i, size_t j) {
+  GYOTO_DEBUG << "i=" << i << ", j=" << j << endl;
   if ( i<=0 || i> npix_ || j>npix_ || j<=0) GYOTO_ERROR("wrong index");
   if (!mask_) return true;
   return mask_[i-1+npix_*(j-1)];
@@ -945,14 +953,45 @@ void Screen::computeBaseVectors() {
 
 }
 
-void Screen::coordToSky(const double pos[4], double skypos[3]) const {
+void Screen::coordToSky(const double pos[4], double skypos[3],
+			bool geometrical) const {
   double xyz[3];
   coordToXYZ(pos, xyz);
-  double ul = gg_ -> unitLength();
+  double ul = geometrical?1.:gg_ -> unitLength();
 
   skypos[0]=(xyz[0]*ex_[0]+xyz[1]*ey_[0]+xyz[2]*ez_[0]) * ul;
   skypos[1]=(xyz[0]*ex_[1]+xyz[1]*ey_[1]+xyz[2]*ez_[1]) * ul;
   skypos[2]=(xyz[0]*ex_[2]+xyz[1]*ey_[2]+xyz[2]*ez_[2]) * ul;
+}
+
+void Screen::skyToCoord(const double skypos[3], double pos[4],
+			bool geometrical) const {
+  // convert from m to ug
+  double ulm1 = geometrical?1.:1./gg_ -> unitLength();
+  double alpha=skypos[0]*ulm1, delta=skypos[1]*ulm1, zobs=skypos[2]*ulm1;
+
+  // rotate from sky frame to BH frame in Cartesian coordinates
+  double ca, sa; sincos(euler_[0], &sa, &ca);
+  double cb, sb; sincos(euler_[1], &sb, &cb);
+  double cc, sc; sincos(euler_[2], &sc, &cc);
+  double xyz[3];
+  xyz[0]=(-cb*sa*sc+ca*cc)*alpha+(ca*cb*sc+cc*sa)*delta+sb*sc*zobs;
+  xyz[1]=(-cb*cc*sa-ca*sc)*alpha+(ca*cb*cc-sa*sc)*delta+cc*sb*zobs;
+  xyz[2]=sa*sb*alpha-ca*sb*delta+cb*zobs;
+
+  // possibly convert to spherical
+  switch (gg_->coordKind()) {
+  case GYOTO_COORDKIND_CARTESIAN:
+    pos[1]=xyz[0];
+    pos[2]=xyz[1];
+    pos[3]=xyz[2];
+    break;
+  case GYOTO_COORDKIND_SPHERICAL:
+    cartesianToSpherical(xyz, pos+1);
+    break;
+  default:
+    GYOTO_ERROR("Unimplemented coordinate kind in Screen::skyToCoord");
+  }
 }
 
 std::ostream & Screen::printBaseVectors(std::ostream &o) const {
@@ -1318,25 +1357,21 @@ SmartPointer<Screen> Screen::Subcontractor(FactoryMessenger* fmp) {
     GYOTO_DEBUG_EXPR(unit);
     GYOTO_ENDIF_DEBUG
 #   endif
-    if      (name=="Time")     {tobs_tmp = atof(tc); tunit=unit; tobs_found=1;}
+    if      (name=="Time")
+      {tobs_tmp = Gyoto::atof(tc); tunit=unit; tobs_found=1;}
     else if (name=="Position") {
       if (FactoryMessenger::parseArray(content, pos, 4) != 4)
 	GYOTO_ERROR("Screen \"Position\" requires exactly 4 tokens");
       scr -> setObserverPos (pos); 
     }
-    else if (name=="KeplerianObserver" ||
-	     name=="ZAMO" ||
-	     name=="ObserverAtInfinity") {
-      scr -> observerKind(name);
-    }
     else if (name=="Distance")    
       {
-	scr -> distance    ( atof(tc), unit );
+	scr -> distance    ( Gyoto::atof(tc), unit );
 	string dmax = fmp -> getAttribute("dmax");
-	if (dmax != "") scr -> dMax(atof(dmax.c_str()));
+	if (dmax != "") scr -> dMax(Gyoto::atof(dmax.c_str()));
       }
     else if (name=="FieldOfView") {
-      fov = atof(tc); fov_unit=unit; fov_found=1;
+      fov = Gyoto::atof(tc); fov_unit=unit; fov_found=1;
     }
     else if (name=="Spectrometer") {
       scr ->
@@ -1345,10 +1380,10 @@ SmartPointer<Screen> Screen::Subcontractor(FactoryMessenger* fmp) {
 		     (fmp->getChild(), plugin));
     }
     else if (name=="Dangle1"){
-      dangle1 = atof(tc); dangle1_found=1; aunit=unit;
+      dangle1 = Gyoto::atof(tc); dangle1_found=1; aunit=unit;
     }
     else if (name=="Dangle2"){
-      dangle2 = atof(tc); dangle2_found=1; dunit=unit;
+      dangle2 = Gyoto::atof(tc); dangle2_found=1; dunit=unit;
     }
     else if (name=="SphericalAngles" ||
 	     name=="EquatorialAngles" ||
@@ -1406,9 +1441,18 @@ GYOTO_ARRAY<double, 2> Screen::Coord2dSet::angles () const {
 Screen::Grid::Grid(Coord1dSet &iset, Coord1dSet &jset,
 		   const char * const p)
   : Coord2dSet(pixel),
-    prefix_(p),
+    prefix_(NULL),
     iset_(iset), jset_(jset)
-{}
+{
+  if (p) {
+    size_t sz=strlen(p)+1;
+    prefix_ = new char[sz];
+    memcpy(prefix_, p, sz*sizeof(char));
+  }
+}
+Screen::Grid::~Grid(){
+  if (prefix_) delete[] prefix_;
+}
 
 GYOTO_ARRAY<size_t, 2> Screen::Grid::operator* () const {
 #if defined HAVE_BOOST_ARRAY_HPP
@@ -1478,8 +1522,16 @@ size_t Screen::Range::index() const {return (cur_-mi_) / d_;}
 //////
 
 Screen::Indices::Indices (size_t const*const buf, size_t sz)
-  : Coord1dSet(pixel), indices_(buf), sz_(sz), i_(0)
-{}
+  : Coord1dSet(pixel), indices_(NULL), sz_(sz), i_(0)
+{
+  if (!buf) return;
+  indices_ = new size_t[sz];
+  memcpy(indices_, buf, sz*sizeof(size_t));
+}
+Screen::Indices::~Indices(){
+  if (!indices_) return;
+  delete[] indices_;
+}
 void Screen::Indices::begin() {i_=0;}
 bool Screen::Indices::valid() {return i_ < sz_;}
 size_t Screen::Indices::size(){return sz_;}
@@ -1491,8 +1543,16 @@ size_t Screen::Indices::index() const {return i_;}
 /////
 
 Screen::Angles::Angles (double const*const buf, size_t sz)
-  : Coord1dSet(Screen::angle), buf_(buf), sz_(sz), i_(0)
-{}
+  : Coord1dSet(Screen::angle), buf_(NULL), sz_(sz), i_(0)
+{
+  if (!buf) return;
+  buf_ = new double[sz];
+  memcpy(buf_, buf, sz*sizeof(double));
+}
+Screen::Angles::~Angles(){
+  if (!buf_) return;
+  delete[] buf_;
+}
 void Screen::Angles::begin() {i_=0;}
 bool Screen::Angles::valid() {return i_<sz_;}
 size_t Screen::Angles::size(){return sz_;}

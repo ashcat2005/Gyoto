@@ -3,8 +3,103 @@
 import unittest
 import gyoto.core
 import numpy
+import gyoto.metric, gyoto.astrobj, gyoto.spectrum, gyoto.spectrometer
+import inspect
 
 gyoto.core.requirePlugin('stdplug')
+
+class TestSmartPointer(unittest.TestCase):
+    def test_simple_classes(self):
+        for classname in ('Scenery', 'Screen', 'Photon'):
+            cls=getattr(gyoto.core, classname)
+            obj=cls()
+            self.assertEqual(obj.getRefCount(), 1)
+            clone=obj.clone()
+            self.assertEqual(obj.getRefCount(), 1)
+            self.assertEqual(clone.getRefCount(), 1)
+            rep=obj.__str__()
+            self.assertEqual(obj.getRefCount(), 1)
+
+    def test_base_classes(self):
+        '''Test reference counting
+
+        All constructors, cloners and destructors must implement and
+        decrement the reference counter correctly.
+
+        '''
+        for gnspace in ('Metric', 'Astrobj', 'Spectrum', 'Spectrometer'):
+            pnspace=gnspace.lower()
+            nspace=getattr(gyoto, pnspace)
+            generic=getattr(nspace, 'Generic')
+            for classname, cls in inspect.getmembers(nspace):
+                # Skip abstract classes
+                if (classname in ('Generic',
+                                  gnspace,
+                                  'StandardAstrobj',
+                                  'UniformSphere')
+                    or not inspect.isclass(cls)):
+                    continue
+                # The XML name of ComplexAstrobj et al. is 'Complex'
+                if 'Complex' in classname:
+                    classname='Complex'
+                # The XML name of UniformSpectrometer is 'wave'
+                if classname in ('UniformSpectrometer', 'Uniform'):
+                    classname='wave'
+                # Construct instance from default constructor
+                obj=cls()
+                self.assertEqual(obj.getRefCount(), 1)
+                # Cast to base class
+                gen=generic(obj)
+                self.assertEqual(obj.getRefCount(), 2)
+                # Destroy one reference
+                del gen
+                self.assertEqual(obj.getRefCount(), 1)
+                # Clone
+                clone=obj.clone()
+                self.assertEqual(obj.getRefCount(), 1)
+                self.assertEqual(clone.getRefCount(), 1)
+                # Print
+                rep=obj.__str__()
+                self.assertEqual(obj.getRefCount(), 1)
+                # Clean
+                del rep
+                del clone
+                del obj
+                # Construct instance from XML name
+                gen=generic(classname)
+                self.assertEqual(gen.getRefCount(), 1)
+                # Cast to derived class
+                obj=cls(gen)
+                self.assertEqual(gen.getRefCount(), 2)
+                # Destroy one isntance
+                del obj
+                self.assertEqual(gen.getRefCount(), 1)
+                # Clean
+                del gen
+                # Construct instance from XML name, setting plugin list
+                gen=generic(classname, [])
+                self.assertEqual(gen.getRefCount(), 1)
+                # Clean
+                del gen
+
+    def test_complex_classes(self):
+        '''Test that adding, retrieving, deleting members updates refCount
+        '''
+        for cls in (gyoto.astrobj.Complex, gyoto.spectrometer.Complex):
+            cplx=cls()
+            cplx1=cls()
+            self.assertEqual(cplx.getRefCount(), 1)
+            self.assertEqual(cplx1.getRefCount(), 1)
+            cplx.append(cplx1)
+            self.assertEqual(cplx1.getRefCount(), 2)
+            cplx2=cplx[0]
+            self.assertEqual(cplx1.getRefCount(), 3)
+            del cplx2
+            self.assertEqual(cplx1.getRefCount(), 2)
+            cplx.remove(0)
+            self.assertEqual(cplx1.getRefCount(), 1)
+            del cplx1
+            del cplx
 
 class TestUnit(unittest.TestCase):
 
@@ -80,21 +175,137 @@ class TestMetric(unittest.TestCase):
         gg=gyoto.core.Metric('KerrBL')
         tt=gg.gmunu((0, 6, 3.14, 0), 0, 0)
         self.assertAlmostEqual(tt, -0.6666666666666667)
-        dst=numpy.zeros((4, 4), float)
-        gg.gmunu(dst, (0, 6, 3.14, 0))
+        dst=gg.gmunu((0, 6, 3.14, 0))
         self.assertEqual(tt, dst[0, 0])
-        dst2=gg.gmunu((0, 6, 3.14, 0))
-        self.assertEqual(tt, dst2[0, 0])
 
     def test_christoffel(self):
         gg=gyoto.core.Metric('KerrBL')
         tt=gg.christoffel((0, 6, 3.14, 0), 0, 0, 0)
         self.assertAlmostEqual(tt, 0)
         dst=numpy.zeros((4, 4, 4), float)
-        gg.christoffel(dst, (0, 6, 3.14, 0))
+        retval=gg.christoffel(dst, (0, 6, 3.14, 0))
         self.assertEqual(tt, dst[0, 0, 0])
+        self.assertEqual(retval, 0)
         dst2=gg.christoffel((0, 6, 3.14, 0))
         self.assertEqual(tt, dst2[0, 0, 0])
+
+    def test_norm(self):
+        gg=gyoto.core.Metric('KerrBL')
+        gg.set('Spin', 0.95)
+        pos=numpy.asarray([0., 6., numpy.pi/2., 0.])
+        vel=gg.circularVelocity(pos)
+        self.assertAlmostEqual(gg.norm(pos, vel), -1.)
+
+    def test_GramSchmidt_BL(self):
+        gg=gyoto.core.Metric('KerrBL')
+        gg.set('Spin', 0.95)
+        pos=numpy.asarray([0., 6., numpy.pi/2., 0.])
+        fourvel=gg.circularVelocity(pos)
+        screen1=numpy.zeros(4)
+        screen2=numpy.zeros(4)
+        screen3=numpy.zeros(4)
+        screen1[0]=0.;
+        screen1[1]=0.;
+        screen1[2]=0.;
+        screen1[3]=-1.;
+        screen2[0]=0.;
+        screen2[1]=0.;
+        screen2[2]=-1.;
+        screen2[3]=0.;
+        screen3[0]=0.;
+        screen3[1]=-1.;
+        screen3[2]=0.;
+        screen3[3]=0.;
+        gg.GramSchmidt(pos, fourvel, screen2, screen3, screen1);
+        self.assertAlmostEqual(gg.norm(pos, fourvel), -1.)
+        self.assertAlmostEqual(gg.norm(pos, screen1), 1.)
+        self.assertAlmostEqual(gg.norm(pos, screen2), 1.)
+        self.assertAlmostEqual(gg.norm(pos, screen3), 1.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen1), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen2), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen3), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen1, screen2), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen1, screen3), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen2, screen3), 0.)
+
+    def test_GramSchmidt_KS(self):
+        gg=gyoto.core.Metric('KerrKS')
+        gg.set('Spin', 0.95)
+        pos=numpy.asarray([0., 6., 0. , 0.])
+        fourvel=gg.circularVelocity(pos)
+        screen1=numpy.zeros(4)
+        screen2=numpy.zeros(4)
+        screen3=numpy.zeros(4)
+        rp=numpy.sqrt(pos[1]*pos[1]+pos[2]*pos[2])
+        theta=numpy.arctan2(rp, pos[3])
+        phi=numpy.arctan2(pos[2], pos[1])
+        sp=numpy.sin(phi)
+        cp=numpy.cos(phi)
+        st=numpy.sin(theta)
+        ct=numpy.cos(theta)
+        screen1[0]=0.;
+        screen1[1]=sp;
+        screen1[2]=-cp;
+        screen1[3]=0.;
+        screen2[0]=0.;
+        screen2[1]=-ct*cp;
+        screen2[2]=-ct*sp;
+        screen2[3]=st;
+        screen3[0]=0.;
+        screen3[1]=-pos[1];
+        screen3[2]=-pos[2];
+        screen3[3]=-pos[3];
+        gg.GramSchmidt(pos, fourvel, screen2, screen3, screen1);
+        self.assertAlmostEqual(gg.norm(pos, fourvel), -1.)
+        self.assertAlmostEqual(gg.norm(pos, screen1), 1.)
+        self.assertAlmostEqual(gg.norm(pos, screen2), 1.)
+        self.assertAlmostEqual(gg.norm(pos, screen3), 1.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen1), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen2), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen3), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen1, screen2), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen1, screen3), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen2, screen3), 0.)
+
+    def test_obsereverTetrad_BL(self):
+        gg=gyoto.core.Metric('KerrBL')
+        gg.set('Spin', 0.95)
+        pos=numpy.asarray([0., 6., numpy.pi/2., 0.])
+        fourvel=gg.circularVelocity(pos)
+        screen1=numpy.zeros(4)
+        screen2=numpy.zeros(4)
+        screen3=numpy.zeros(4)
+        gg.observerTetrad(pos, fourvel, screen1, screen2, screen3)
+        self.assertAlmostEqual(gg.norm(pos, fourvel), -1.)
+        self.assertAlmostEqual(gg.norm(pos, screen1), 1.)
+        self.assertAlmostEqual(gg.norm(pos, screen2), 1.)
+        self.assertAlmostEqual(gg.norm(pos, screen3), 1.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen1), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen2), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen3), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen1, screen2), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen1, screen3), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen2, screen3), 0.)
+
+    def test_GramSchmidt_KS(self):
+        gg=gyoto.core.Metric('KerrKS')
+        gg.set('Spin', 0.95)
+        pos=numpy.asarray([0., 6., 0. , 0.])
+        fourvel=gg.circularVelocity(pos)
+        screen1=numpy.zeros(4)
+        screen2=numpy.zeros(4)
+        screen3=numpy.zeros(4)
+        gg.observerTetrad(pos, fourvel, screen1, screen2, screen3)
+        self.assertAlmostEqual(gg.norm(pos, fourvel), -1.)
+        self.assertAlmostEqual(gg.norm(pos, screen1), 1.)
+        self.assertAlmostEqual(gg.norm(pos, screen2), 1.)
+        self.assertAlmostEqual(gg.norm(pos, screen3), 1.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen1), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen2), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, fourvel, screen3), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen1, screen2), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen1, screen3), 0.)
+        self.assertAlmostEqual(gg.ScalarProd(pos, screen2, screen3), 0.)
 
 class TestValue(unittest.TestCase):
 

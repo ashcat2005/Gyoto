@@ -1,5 +1,5 @@
 /*
-    Copyright 2019 Frederic Vincent & Thibaut Paumard
+    Copyright 2019-2020 Frederic Vincent & Thibaut Paumard
 
     This file is part of Gyoto.
 
@@ -66,7 +66,7 @@ Standard("FlaredDiskSynchrotron"), GridData2D(),
   filename_(""), hoverR_(0.),
   density_(NULL), velocity_(NULL),
   numberDensityMax_cgs_(1.), temperatureMax_(1.),
-  magnetizationParameter_(1.)
+  magnetizationParameter_(1.), dt_(0.)
 {
   GYOTO_DEBUG << endl;
   spectrumKappaSynch_ = new Spectrum::KappaDistributionSynchrotron();
@@ -77,7 +77,7 @@ FlaredDiskSynchrotron::FlaredDiskSynchrotron(const FlaredDiskSynchrotron& o) :
   filename_(o.filename_), hoverR_(o.hoverR_),
   density_(NULL), velocity_(NULL),
   numberDensityMax_cgs_(o.numberDensityMax_cgs_), temperatureMax_(o.temperatureMax_),
-  magnetizationParameter_(o.magnetizationParameter_)
+  magnetizationParameter_(o.magnetizationParameter_), dt_(o.dt_)
 {
   GYOTO_DEBUG << endl;
   size_t ncells = 0;
@@ -130,13 +130,18 @@ double FlaredDiskSynchrotron::hoverR() const {
 }
 
 void FlaredDiskSynchrotron::timeTranslation_inMunit(double const dt) {
-  if (filename_=="")
-    throwError("In FlaredDiskSynchrotron::timeTranslation: "
-	       "please call first fitsRead, ie put the File "
-	       "XML field before the TimeTranslation XML field");
+  // Note: fitsRead() also uses dt_ to translate tmin_ and tmax_, so
+  // it is fine to set File after TimeTranslation_inMunit.  Since we
+  // don't record the original tmin_ and tmax_ values, we must remove
+  // any previous translation though.
   double tmin=GridData2D::tmin(), tmax=GridData2D::tmax();
-  GridData2D::tmin(tmin+dt);
-  GridData2D::tmax(tmax+dt);
+  GridData2D::tmin(tmin-dt_+dt);
+  GridData2D::tmax(tmax-dt_+dt);
+  dt_=dt;
+}
+
+double FlaredDiskSynchrotron::timeTranslation_inMunit() const {
+  return dt_;
 }
 
 double FlaredDiskSynchrotron::numberDensityMax() const {
@@ -293,7 +298,7 @@ vector<size_t> FlaredDiskSynchrotron::fitsRead(string filename) {
   if (status) {
     if (status == KEY_NO_EXIST) status = 0; // not fatal
     else throwCfitsioError(status) ;
-  } else GridData2D::tmin(tmpd); // tmin_ found
+  } else GridData2D::tmin(tmpd+dt_); // tmin_ found
 
   GYOTO_DEBUG << "FlaredDiskSynchrotron::fitsRead(): read tmax_" << endl;
   fits_read_key(fptr, TDOUBLE, "GYOTO GridData2D tmax", &tmpd,
@@ -301,7 +306,7 @@ vector<size_t> FlaredDiskSynchrotron::fitsRead(string filename) {
   if (status) {
     if (status == KEY_NO_EXIST) status = 0; // not fatal
     else throwCfitsioError(status) ;
-  } else GridData2D::tmax(tmpd); // tmax_ found
+  } else GridData2D::tmax(tmpd+dt_); // tmax_ found
 
   GYOTO_DEBUG << "FlaredDiskSynchrotron::fitsRead(): read rmin_" << endl;
   fits_read_key(fptr, TDOUBLE, "GYOTO GridData2D rmin", &tmpd,

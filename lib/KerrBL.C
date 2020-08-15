@@ -270,9 +270,13 @@ int KerrBL::christoffel(double dst[4][4][4], double const pos[4]) const
     Sigmam3=Sigmam2*Sigmam1,
     a2cthsth=a2_*cth*sth,
     rSigmam1=r*Sigmam1,
-    Deltam1Sigmam2=Deltam1*Sigmam2;
+    Deltam1Sigmam2=Deltam1*Sigmam2,
+    r2plusa2 = r2+a2_;
 
-  double term1=(a2_+2.*r2+a2_*c2th), term1m1=1./term1;
+  // These formulas are taken from Semerak, MNRAS, 308, 863 (1999)
+  // appendix A, and have been compared against the SageMath expressions
+  // for some particular spacetime point (not in the equatorial plane);
+  // they agree at machine precision
 
   dst[1][1][1]=(1.-r)*Deltam1+rSigmam1;
   dst[1][2][1]=dst[1][1][2]=-a2cthsth*Sigmam1;
@@ -280,35 +284,24 @@ int KerrBL::christoffel(double dst[4][4][4], double const pos[4]) const
   dst[1][3][3]=-Delta*sth2*(r+(a2_*(-2.*r2+Sigma)*sth2)/Sigma2)/Sigma;
   dst[1][3][0]=dst[1][0][3]=spin_*Delta*(-2*r2+Sigma)*sth2*Sigmam3;
   dst[1][0][0]=-Delta*(-2.*r2+Sigma)*Sigmam3;
-  dst[2][1][1]=a2cthsth/(Delta*(r2+a2_*cth2));
+  dst[2][1][1]=a2cthsth*Deltam1*Sigmam1;
   dst[2][2][1]=dst[2][1][2]=rSigmam1;
   dst[2][2][2]=-a2cthsth*Sigmam1;
   dst[2][3][3]=
-    -((a2_+r2)*Sigma2+4.*a2_*r*Sigma*sth2+2.*a4_*r*sth4)*s2th*0.5*Sigmam3;
-  dst[2][0][3]=dst[2][3][0]=spin_*r*(Sigma+a2_*sth2)*s2th*Sigmam3;
+    -sth*cth*Sigmam3 * (Delta*Sigma2 + 2.*r*r2plusa2*r2plusa2);
+  dst[2][0][3]=dst[2][3][0]=spin_*r*r2plusa2*s2th*Sigmam3;
   dst[2][0][0]=-2.*a2cthsth*r*Sigmam3;
   dst[3][3][1]=dst[3][1][3]=
-    (2.*r*Sigma*((-2.+r)*r+a2_*cth2)+2.*a2_*(-2.*r2+Sigma)*sth2)
-    *Deltam1*Sigmam1*term1m1;
+    Deltam1*Sigmam2 * (r*Sigma*(Sigma-2.*r) + a2_*(Sigma-2.*r2)*sth2);
   dst[3][3][2]=dst[3][2][3]=
-    (2.*(a2_+r2)*Sigma2*(term1-4.*r)*ctgth+
-     a2_*r*s2th*(8.*(-1.+r)*r*Sigma+a2_*(8.*Sigma*cth2+4.*r2*sth2+a2_*s2th2)))
-    *0.5*Deltam1Sigmam2*term1m1;
+    Sigmam2*ctgth * (-(Sigma+Delta)*a2_*sth2 + r2plusa2*r2plusa2);
   dst[3][0][1]=dst[3][1][0]=spin_*(2.*r2-Sigma)*Deltam1Sigmam2;
-  dst[3][0][2]=dst[3][2][0]=
-    -4.*spin_*r*(a2_+(-2.+r)*r)*ctgth*Deltam1*Sigmam1*term1m1;
+  dst[3][0][2]=dst[3][2][0]=-2.*spin_*r*ctgth*Sigmam2;
   dst[0][3][1]=dst[0][1][3]=
-    (spin_*(-4.*r6+2.*r4*Sigma-4.*r2*Sigma2+a4_*(-2.*r2+Sigma)+ 
-	    3.*a2_*r2*(-2.*r2+Sigma)-a2_*(a2_+r2)*(2.*r2-Sigma)*c2th)*sth2)
-    *Deltam1Sigmam2*term1m1;
-  dst[0][3][2]=dst[0][2][3]=
-    (spin_*r*(2.*(a4_+2.*r*(2.+r)*Sigma+a2_*(r2+2*Sigma)-
-		  (4.*(a2_+r2)*Sigma*(2.*r+Sigma))*term1m1
-		  )*s2th-a2_*(a2_+r2)*s4th))
-    *0.25*Deltam1Sigmam2;
+    -spin_*sth2*Deltam1Sigmam2 * (2.*r2*r2plusa2 + Sigma*(r2-a2_));
+  dst[0][3][2]=dst[0][2][3]=Sigmam2*spin_*a2_*r*sth2*s2th;
   dst[0][0][1]=dst[0][1][0]=(a2_+r2)*(2.*r2-Sigma)*Deltam1Sigmam2;
-  dst[0][0][2]=dst[0][2][0]=
-    (a2_*r*(-a2_+r*(-r+(4.*Sigma)*term1m1))*s2th)*Deltam1Sigmam2;
+  dst[0][0][2]=dst[0][2][0]=-a2_*r*s2th*Sigmam2;
 
   return 0;
 } 
@@ -484,6 +477,23 @@ void KerrBL::circularVelocity(double const coor[4], double vel[4],
 # if GYOTO_DEBUG_ENABLED
   GYOTO_DEBUG_ARRAY(vel,4);
 # endif
+}
+
+void KerrBL::zamoVelocity(double const * coor, double* vel) const {
+  double g[4][4];
+  gmunu(g, coor);
+  double gtt = g[0][0],
+    //    grr      = g[1][1],
+    //    gthth    = g[2][2],
+    gpp      = g[3][3],
+    gtp      = g[0][3];
+  double fact = gtt*gpp - gtp*gtp;
+  double ut2 = -gpp/fact;
+  double omega = -gtp/gpp;
+  vel[0] = sqrt(ut2);
+  vel[1] = 0.;
+  vel[2] = 0.;
+  vel[3] = omega*vel[0];
 }
 
 //Runge Kutta to order 4
@@ -1178,70 +1188,47 @@ void KerrBL::setParticleProperties(Worldline * line, const double* coord) const
   line -> setCst(cst,5);
 }
 
-void KerrBL::observerTetrad(string const obskind,
-			    double const pos[4], double fourvel[4],
+void KerrBL::observerTetrad(double const pos[4], double fourvel[4],
 			    double screen1[4], double screen2[4], 
 			    double screen3[4]) const{
+  // following Krolik & Hawley 2004
+  // https://iopscience.iop.org/article/10.1086/427932/fulltext/
 
-  double gtt = gmunu(pos,0,0),
-    grr      = gmunu(pos,1,1),
-    gthth    = gmunu(pos,2,2),
-    gpp      = gmunu(pos,3,3),
-    gtp      = gmunu(pos,0,3);
+  // First make sure FourVel is normalized
+  normalizeFourVel(pos, fourvel);
 
-  if (obskind=="ZAMO"){
-    double fact = gtt*gpp - gtp*gtp;
-    if (fact == 0.){
-      GYOTO_ERROR("In KerrBL::observerTetrad: "
-		 "bad values");
-    }
-    double ut2 = -gpp/fact;
-    if (grr==0. || gthth==0. || gpp==0. || ut2<=0.){
-      GYOTO_ERROR("In KerrBL::observerTetrad: "
-		 "bad values");
-    }
-    double omega = -gtp/gpp;
-    double ut = sqrt(ut2);
-    double fourv[4]={ut,0.,0.,omega*ut};
-    double e3[4] = {0.,-1./sqrt(grr),0.,0.};
-    double e2[4] = {0.,0.,-1./sqrt(gthth),0.};
-    double e1[4] = {0.,0.,0.,-1/sqrt(gpp)};
-    
-    for (int ii=0;ii<4;ii++){
-      fourvel[ii]=fourv[ii];
-      screen1[ii]=e1[ii];
-      screen2[ii]=e2[ii];
-      screen3[ii]=e3[ii];
-    }
-    
-  }else if (obskind=="KeplerianObserver"){
-    double omega = 1./(pow(pos[1],1.5)+spin_);
-    double ut2 = -1/(gtt+gpp*omega*omega+2.*gtp*omega);
-    if (ut2 <= 0. || grr<=0. || gthth <=0.) {
-      GYOTO_ERROR("In KerrBL::observerTetrad: "
-		 "bad values");
-    }
-    double ut = sqrt(ut2);
-    double fourv[4]={ut,0.,0.,omega*ut};
-    double e3[4] = {0.,-1./sqrt(grr),0.,0.};
-    double e2[4] = {0.,0.,-1./sqrt(gthth),0.};
-    
-    double fact1 = (gtp+gpp*omega)/(gtt+gtp*omega),
-      fact2 = gtt*fact1*fact1+gpp-2.*gtp*fact1;
-    if (fact2 <= 0.) GYOTO_ERROR("In KerrBL::observerTetrad: "
-				"bad values");
-    double a2 = 1./sqrt(fact2), a1 = -a2*fact1;
-    double e1[4] = {-a1,0.,0.,-a2};
-    
-    for (int ii=0;ii<4;ii++){
-      fourvel[ii]=fourv[ii];
-      screen1[ii]=e1[ii];
-      screen2[ii]=e2[ii];
-      screen3[ii]=e3[ii];
-    }
-  }else{
-    GYOTO_ERROR("In KerrBL::observerTetrad "
-	       "unknown observer kind");
-  }
-  Generic::observerTetrad(obskind,pos,fourvel,screen1,screen2,screen3);
+  double g[4][4];
+  gmunu(g, pos);
+  double gtt = g[0][0],
+    grr      = g[1][1],
+    gthth    = g[2][2],
+    gpp      = g[3][3],
+    gtp      = g[0][3],
+    rho2     = gtp*gtp-gtt*gpp;
+  double cst;
+
+  double const * const uu = fourvel;      // alias for fourvel
+  double ud[4]; dualOneForm(pos, uu, ud); // down form
+
+  // screen1 is ephi
+  cst = -1./sqrt(-(uu[0]*ud[0]+uu[3]*ud[3])*rho2);
+  screen1[0] = cst*ud[3];
+  screen1[1] = 0.;
+  screen1[2] = 0.;
+  screen1[3] = -cst*ud[0];
+
+  // screen2 is etheta
+  cst = -1./sqrt(gthth*(1.+ud[2]*uu[2]));
+  screen2[0] = cst*uu[0]*ud[2];
+  screen2[1] = cst*uu[1]*ud[2];
+  screen2[2] = cst*(1.+uu[2]*ud[2]);
+  screen2[3] = cst*uu[3]*ud[2];
+
+  // screen3 is er
+  cst = -1./sqrt(-grr*(1+ud[2]*uu[2])*(uu[0]*ud[0]+uu[3]*ud[3]));
+  screen3[0] = cst*uu[0]*ud[1];
+  screen3[1] = -cst*(uu[0]*ud[0]+uu[3]*ud[3]);
+  screen3[2] = 0.;
+  screen3[3] = cst*uu[3]*ud[1];
+
 }

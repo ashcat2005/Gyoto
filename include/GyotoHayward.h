@@ -91,16 +91,18 @@ class Gyoto::Metric::Hayward : public Metric::Generic {
   double charge() const ; ///< Returns charge
 
   // Methods needed for PolishDoughnut
-  virtual double getRms() const; 
-  virtual double getRmb() const; 
   virtual double getSpecificAngularMomentum(double rr) const;
   virtual double getPotential(double const pos[4], double l_cst) const;
 
+  // Keplerian equatorial orbits angular velocity
+  virtual void circularVelocity(double const coor[4], double vel[4],
+				  double dir) const;
+
   // Actual space-time API
-  void gmunu(double g[4][4], const double * pos) const ;
-  double gmunu(const double * const x, int mu, int nu) const ;
-  void gmunu_up(double gup[4][4], const double * pos) const ;
-  double gmunu_up(const double * const x, int mu, int nu) const ;
+  void gmunu(double ARGOUT_ARRAY2[4][4], const double IN_ARRAY1[4]) const ;
+  double gmunu(double const x[4], int mu, int nu) const ;
+  void gmunu_up(double ARGOUT_ARRAY2[4][4], const double IN_ARRAY1[4]) const ;
+  double gmunu_up(double const x[4], int mu, int nu) const ;
   using Generic::christoffel;
   int christoffel(double dst[4][4][4], const double pos[4]) const ;
   

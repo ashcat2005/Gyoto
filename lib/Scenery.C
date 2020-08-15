@@ -1,5 +1,5 @@
 /*
-    Copyright 2011-2018 Thibaut Paumard, Frederic Vincent
+    Copyright 2011-2016, 2018-2020 Thibaut Paumard, Frederic Vincent
 
     This file is part of Gyoto.
 
@@ -160,7 +160,7 @@ Scenery * Scenery::clone() const { return new Scenery(*this); }
 
 Scenery::~Scenery() {
 # if GYOTO_DEBUG_ENABLED
-  GYOTO_DEBUG << "freeing screen\n";
+  GYOTO_DEBUG << "Destroying Scenery\n";
 # endif
   screen_ = NULL;
 # ifdef HAVE_MPI
@@ -411,7 +411,7 @@ void Scenery::rayTrace(Screen::Coord2dSet & ij,
     }
     size_t nelt= getScalarQuantitiesCount(&quantities)
       +nbnuobs*getSpectralQuantitiesCount(&quantities)
-      +(quantities & GYOTO_QUANTITY_IMPACTCOORDS)?16:0;
+      +((quantities & GYOTO_QUANTITY_IMPACTCOORDS)?16:0);
     double * vect = new double[nelt];
     Astrobj::Properties *locdata = new Astrobj::Properties();
     size_t offset=1;
@@ -442,6 +442,9 @@ void Scenery::rayTrace(Screen::Coord2dSet & ij,
     }
     if (quantities & GYOTO_QUANTITY_REDSHIFT) {
       locdata->redshift=vect+offset*(curquant++);
+    }
+    if (quantities & GYOTO_QUANTITY_NBCROSSEQPLANE) {
+      locdata->nbcrosseqplane=vect+offset*(curquant++);
     }
     if (quantities & GYOTO_QUANTITY_IMPACTCOORDS) {
       locdata->impactcoords=vect+offset*curquant; curquant+=16;
@@ -545,6 +548,7 @@ void Scenery::rayTrace(Screen::Coord2dSet & ij,
 	  if (data->distance) data->distance[cs]=*locdata->distance;
 	  if (data->first_dmin) data->first_dmin[cs]=*locdata->first_dmin;
 	  if (data->redshift) data->redshift[cs]=*locdata->redshift;
+	  if (data->nbcrosseqplane) data->nbcrosseqplane[cs]=*locdata->nbcrosseqplane;
 	  if (data->impactcoords)
 	    for (size_t k=0; k<16; ++k)
 	      data->impactcoords[cs*16+k]=locdata->impactcoords[k];
@@ -663,7 +667,7 @@ void Scenery::rayTrace(Screen::Coord2dSet & ij,
   GYOTO_MSG << "\nRaytraced "<< ij.size()
 	    << " photons in " << end-start
 	    << "s using " << (thread_safe?nthreads_:1) << " thread"
-	    << (thread_safe && nthreads_>1)?"s\n":"\n";
+	    << ((thread_safe && nthreads_>1)?"s":"") << endl;
 
 }
 
@@ -693,6 +697,7 @@ void Scenery::operator() (
   GYOTO_DEBUG << "reset delta" << endl;
 # endif
   ph -> delta(delta_);
+  ph -> nb_cross_eqplane(0); // put to zero the nb of crossing of equat plane  
 
 # if GYOTO_DEBUG_ENABLED
   GYOTO_DEBUG << "init nbnuobs" << endl;
@@ -799,6 +804,8 @@ void Scenery::requestedQuantitiesString(std::string const &squant) {
       quantities_ |= GYOTO_QUANTITY_FIRST_DMIN;
     else if (!strcmp(tk, "Redshift"))
       quantities_ |= GYOTO_QUANTITY_REDSHIFT;
+    else if (!strcmp(tk, "NbCrossEqPlane"))
+      quantities_ |= GYOTO_QUANTITY_NBCROSSEQPLANE;
     else if (!strcmp(tk, "ImpactCoords"))
       quantities_ |= GYOTO_QUANTITY_IMPACTCOORDS;
     else if (!strcmp(tk, "SpectrumStokesQ"))
@@ -903,6 +910,7 @@ std::string Scenery::requestedQuantitiesString() const {
   if (quantities & GYOTO_QUANTITY_MIN_DISTANCE     ) squant+="MinDistance ";
   if (quantities & GYOTO_QUANTITY_FIRST_DMIN       ) squant+="FirstDistMin ";
   if (quantities & GYOTO_QUANTITY_REDSHIFT         ) squant+="Redshift ";
+  if (quantities & GYOTO_QUANTITY_NBCROSSEQPLANE   ) squant+="NbCrossEqPlane ";
   if (quantities & GYOTO_QUANTITY_IMPACTCOORDS     ) squant+="ImpactCoords ";
   if (quantities & GYOTO_QUANTITY_SPECTRUM         ) squant+="Spectrum ";
   if (quantities & GYOTO_QUANTITY_SPECTRUM_STOKES_Q) squant+="SpectrumStokesQ ";
@@ -925,21 +933,22 @@ size_t Scenery::getScalarQuantitiesCount(Quantity_t *q) const {
     quantities=quantities_?
       quantities_:
       (astrobj()?astrobj()->getDefaultQuantities():GYOTO_QUANTITY_NONE);
-  if (quantities & GYOTO_QUANTITY_INTENSITY   ) ++nquant;
-  if (quantities & GYOTO_QUANTITY_EMISSIONTIME) ++nquant;
-  if (quantities & GYOTO_QUANTITY_MIN_DISTANCE) ++nquant;
-  if (quantities & GYOTO_QUANTITY_FIRST_DMIN  ) ++nquant;
-  if (quantities & GYOTO_QUANTITY_REDSHIFT    ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_INTENSITY     ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_EMISSIONTIME  ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_MIN_DISTANCE  ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_FIRST_DMIN    ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_REDSHIFT      ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_NBCROSSEQPLANE) ++nquant;
   //  SPECTRUM is not a SCALAR, don't add the following:
   //  if (quantities & GYOTO_QUANTITY_SPECTRUM    ) ++nquant;
   //  if (quantities & GYOTO_QUANTITY_BINSPECTRUM ) ++nquant;
   //  Idem IMPACTCOORDS:
   //  if (quantities & GYOTO_QUANTITY_IMPACTCOORDS) ++nquant;
-  if (quantities & GYOTO_QUANTITY_USER1       ) ++nquant;
-  if (quantities & GYOTO_QUANTITY_USER2       ) ++nquant;
-  if (quantities & GYOTO_QUANTITY_USER3       ) ++nquant;
-  if (quantities & GYOTO_QUANTITY_USER4       ) ++nquant;
-  if (quantities & GYOTO_QUANTITY_USER5       ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_USER1         ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_USER2         ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_USER3         ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_USER4         ) ++nquant;
+  if (quantities & GYOTO_QUANTITY_USER5         ) ++nquant;
   return nquant;
 }
 
@@ -985,6 +994,9 @@ double Scenery::absTol() const {return ph_.absTol();}
 void Scenery::absTol(double t) {ph_.absTol(t);}
 double Scenery::relTol() const {return ph_.relTol();}
 void Scenery::relTol(double t) {ph_.relTol(t);}
+
+double Scenery::maxCrossEqplane() const {return ph_.maxCrossEqplane();}
+void Scenery::maxCrossEqplane(double max) {ph_.maxCrossEqplane(max);}
 
 void Scenery::secondary(bool sec) { ph_.secondary(sec); }
 bool Scenery::secondary() const { return ph_.secondary(); }

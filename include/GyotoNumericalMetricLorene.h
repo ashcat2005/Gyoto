@@ -6,7 +6,7 @@
  */
 
 /*
- *   Copyright (c) 2014-2016, 2018 Frederic Vincent, Thibaut Paumard
+ *   Copyright (c) 2014-2018, 2020 Frederic Vincent, Thibaut Paumard
  *
  *
  */
@@ -170,6 +170,21 @@ class Gyoto::Metric::NumericalMetricLorene
 
   double gmunu(const double x[3], int indice_time, int mu, int nu) const ;
 
+  virtual void gmunu_up(double ARGOUT_ARRAY2[4][4], const double IN_ARRAY1[4]) const ;
+
+  void gmunu_up(double gup[4][4], const double x[4], int indice_time) const ;
+
+  void gmunu_di(const double pos[4],
+		double gmunudr[4][4],
+		double gmunudth[4][4]) const ;
+  
+  void gmunu_di(const double pos[4],
+		int indice_time,
+		double gmunudr[4][4],
+		double gmunudth[4][4]) const ;
+
+  virtual void jacobian(double ARGOUT_ARRAY3[4][4][4], const double IN_ARRAY1[4]) const ;
+
   /**
    * \brief r derivative of contravariant 4-metric
    */
@@ -183,9 +198,9 @@ class Gyoto::Metric::NumericalMetricLorene
 		     const int alpha, 
 		     const int mu, const int nu,
 		     const int indice_time) const;
-  virtual int christoffel(double dst[4][4][4], 
+  virtual int christoffel(double dst[4][4][4],
 			  const double coord[4]) const;
-  int christoffel(double dst[4][4][4], 
+  int christoffel(double dst[4][4][4],
 		  const double coord[4],
 		  const int indice_time) const;
   /**
@@ -215,7 +230,7 @@ class Gyoto::Metric::NumericalMetricLorene
    * F function such as d(coord)/d(tau)=F(coord)
    */
   //using Generic::diff;
-  virtual int diff(state_t const &coord, state_t &res) const;
+  virtual int diff(state_t const &coord, state_t &res, double mass) const;
   int diff(double tt, const double y[7], double res[7]) const ;
   virtual int diff(const double y[7], double res[7], int indice_time) const ;
 

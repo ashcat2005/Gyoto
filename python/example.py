@@ -30,8 +30,7 @@ import gyoto.std
 scr=gyoto.core.Screen()
 gg=gyoto.std.KerrBL()
 scr.metric(gg)
-pos=numpy.zeros(4, float)
-scr.getObserverPos(pos)
+pos=scr.getObserverPos()
 
 # Load Scenery
 
@@ -62,6 +61,7 @@ theta=numpy.ndarray(n)
 phi=numpy.ndarray(n)
 
 # Call Gyoto method that takes these arrays as argument:
+ph.get_t(t)
 ph.getCoord(t, r, theta, phi)
 
 plt.plot(t, r)
@@ -85,6 +85,19 @@ plt.plot(x, y)
 plt.show()
 
 # Ray-trace scenery
+
+# For that, we can use the short-hand:
+sc.requestedQuantitiesString('Intensity EmissionTime MinDistance')
+results=sc.rayTrace()
+
+plt.imshow(results['Intensity'])
+plt.show()
+plt.imshow(results['EmissionTime'])
+plt.show()
+plt.imshow(results['MinDistance'])
+plt.show()
+
+# Or we can do it manually to understand how the Gyoto API works:
 
 res=sc.screen().resolution()
 intensity=numpy.zeros((res, res), dtype=float)

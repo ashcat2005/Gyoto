@@ -1,5 +1,5 @@
 /*
-    Copyright 2011 Thibaut Paumard
+    Copyright 2011-2012, 2014-2016, 2018-2020 Thibaut Paumard & Frédéric Vincent
 
     This file is part of Gyoto.
 
@@ -22,6 +22,7 @@
 #include "GyotoPhoton.h"
 #include <cmath>
 #include <cstdlib>
+#include <clocale>
 
 #include "GyotoScenery.h"
 #include "GyotoSpectrum.h"
@@ -112,7 +113,12 @@ double Gyoto::atof(const char * str)
       if (positive) retval = DBL_MIN;
       else retval = -DBL_MIN;
     } else GYOTO_ERROR("unrecognize double representation");
-  } else retval = std::atof(str);
+  } else {
+    std::string loc(setlocale(LC_NUMERIC, NULL));
+    setlocale(LC_NUMERIC, "C");
+    retval = std::atof(str);
+    setlocale(LC_NUMERIC, loc.c_str());
+  }
 
   GYOTO_DEBUG << "==" << retval << endl;
 
@@ -308,4 +314,102 @@ double Gyoto::hypergeom (double kappaIndex, double thetae) {
   GYOTO_ERROR("Utils::_hypergeom() is not functional, please recompile Gyoto with either ARBLIB or AEAE");
   return 0.;
 #endif
+}
+
+// Coordinate transforms
+void Gyoto::cartesianToSpherical(double const cpos[3], double spos[3]) {
+  spos[0]=sqrt(cpos[0]*cpos[0]+cpos[1]*cpos[1]+cpos[2]*cpos[2]);
+  spos[1]=acos(cpos[2]/spos[0]);
+  spos[2]=atan2(cpos[1],cpos[0]);
+}
+
+void Gyoto::sphericalToCartesian(double const spos[3], double cpos[3]) {
+  double c1, s1; sincos(spos[1], &s1, &c1);
+  double c2, s2; sincos(spos[2], &s2, &c2);
+  cpos[0] = spos[0]*s1*c2;
+  cpos[1] = spos[0]*s1*s2;
+  cpos[2] = spos[0]*c1;
+}
+
+// Matrix inversion
+void Gyoto::matrix4Invert(double Am1[4][4], double const A[4][4]) {
+  // Invert 4×4 matrix using Gauss pivot
+  double tmp[4][4];
+  int i, j, jj, jl;
+  double fact;
+
+  // Initialize Am1 as identity matrix
+  // copy A into tmp
+  for (j=0; j<4; ++j) {
+    for (i=0; i<4; ++i) {
+      Am1[i][j] = (i==j);
+      tmp[i][j] = A[i][j];
+    }
+  }
+
+  // Turn tmp in upper diagonal matrix with ones on the diagonal
+  for (j=0; j<4; ++j) {
+    // exchange row j with later row with largest coeff in column j
+    // (to deal with case of zero or small value on the diagonal
+    fact=tmp[j][j];
+    jl=j;
+    for (jj=j+1; jj<4; ++jj) {
+      if (fabs(tmp[j][jj])>fabs(fact)) {
+	jl=jj;
+	fact=tmp[j][jj];
+      }
+    }
+    fact=1./fact;
+    if (jl!=j) {
+      double c;
+      for (i=j; i<4; ++i) {
+	c=tmp[i][jl];
+	tmp[i][jl]=tmp[i][j];
+	tmp[i][j]=c*fact;
+      }
+      for (i=0; i<4; ++i) {
+	c=Am1[i][jl];
+	Am1[i][jl]=Am1[i][j];
+	Am1[i][j]=c*fact;
+      }
+    } else {
+      for (i=j; i<4; ++i) tmp[i][j] *= fact;
+      for (i=0; i<4; ++i) Am1[i][j] *= fact;
+    }
+    // subtract this row times of factor to each later row
+    for (jj = j+1; jj < 4; ++jj) {
+      fact = tmp[j][jj];
+      for (i=j+1; i<4; ++i) tmp[i][jj] -= fact*tmp[i][j];
+      for (i=0; i<4; ++i) Am1[i][jj] -= fact*Am1[i][j];
+    }
+  }
+
+  // Cancel upper triangle to get finally the identity matrix
+  for (j=3; j>=0; --j) {
+    for (jj = j-1; jj >= 0; --jj) {
+      fact = tmp[j][jj];
+      for (i=0; i<4; ++i) tmp[i][jj] -= fact*tmp[i][j];
+      for (i=0; i<4; ++i) Am1[i][jj] -= fact*Am1[i][j];
+    }
+  }
+}
+
+
+void Gyoto::matrix4CircularInvert(double Am1[4][4], double const A[4][4]) {
+  // Works for a metric where gtr, gttheta and grtheta are 0 (and symmetrical...)
+  double a=A[0][0], b=A[1][1], c=A[2][2], d=A[3][3], t=A[0][3];
+  double t2=t*t;
+  double X=d-t2/a;
+  double aX=a*X;
+
+  Am1[0][0]=(aX+t2)/(a*aX);
+  Am1[1][1]=1./b;
+  Am1[2][2]=1./c;
+  Am1[3][3]=1/X;
+  Am1[0][3]=Am1[3][0]=-t/aX;
+  Am1[0][1]=Am1[1][0]=0.;
+  Am1[0][2]=Am1[2][0]=0.;
+  Am1[1][2]=Am1[2][1]=0.;
+  Am1[1][3]=Am1[3][1]=0.;
+  Am1[2][3]=Am1[3][2]=0.;
 }

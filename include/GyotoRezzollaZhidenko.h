@@ -60,12 +60,14 @@ class Gyoto::Metric::RezzollaZhidenko
   std::vector<double> bparam() const;
 
 
-  double gmunu(const double * const x, int mu, int nu) const ;
+  using Generic::gmunu;
+  double gmunu(double const x[4], int mu, int nu) const ;
   double N2(const double rr) const;
   double B2(const double rr) const;
   double Nprime(const double rr) const;
   double Bprime(const double rr) const;
-  int christoffel(double dst[4][4][4], const double * pos) const ;
+  using Generic::christoffel;
+  int christoffel(double dst[4][4][4], double const pos[4]) const ;
   int isStopCondition(double const * const coord) const;
   virtual double getRmb() const;
   virtual double getRms() const;

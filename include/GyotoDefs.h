@@ -3,7 +3,7 @@
  * \brief Gyoto ubiquitous macros and typedefs
  */
 /*
-    Copyright 2011, 2018 Thibaut Paumard
+    Copyright 2011-2015, 2017-2020 Thibaut Paumard & Frédéric Vincent
 
     This file is part of Gyoto.
 
@@ -77,47 +77,49 @@ namespace Gyoto {
 
   /* Generic */
 
-#define GYOTO_QUANTITY_NONE           0
+#define GYOTO_QUANTITY_NONE                  0
 
   /// Intensity: I<SUB>&nu;</SUB> at Scenery::freq_obs_.
-#define GYOTO_QUANTITY_INTENSITY      1
+#define GYOTO_QUANTITY_INTENSITY             1<<0
   /// EmissionTime: Emission date.
-#define GYOTO_QUANTITY_EMISSIONTIME   2
+#define GYOTO_QUANTITY_EMISSIONTIME          1<<1
   /// MinDistance: Behaves like minimal distance between Photon and Astrobj.
   /**
    * Not always exactly a distance, though. 
    */
-#define GYOTO_QUANTITY_MIN_DISTANCE   4
+#define GYOTO_QUANTITY_MIN_DISTANCE          1<<2
   /// FirstDmin: First Photon-Astrobj distance local minimum while integrating back in time.
-#define GYOTO_QUANTITY_FIRST_DMIN     8
+#define GYOTO_QUANTITY_FIRST_DMIN            1<<3
   /// Redshift: &nu;<SUB>obs</SUB>/&nu;<SUB>em</SUB>.
-#define GYOTO_QUANTITY_REDSHIFT      16
+#define GYOTO_QUANTITY_REDSHIFT              1<<4
   /// ImpactCoords: Astrobj and Photon 8-coordinates at emission.
   /**
    * A 16-element vector. See Gyoto::Quantity_t.
    */ 
-#define GYOTO_QUANTITY_IMPACTCOORDS  32
+#define GYOTO_QUANTITY_IMPACTCOORDS          1<<5
   /// Spectrum: I<SUB>&nu;</SUB> at each frequency in Scenery::screen_->getMidpoints().
-#define GYOTO_QUANTITY_SPECTRUM      64
+#define GYOTO_QUANTITY_SPECTRUM              1<<6
   /// SpectrumStokesQ
-#define GYOTO_QUANTITY_SPECTRUM_STOKES_Q     128
+#define GYOTO_QUANTITY_SPECTRUM_STOKES_Q     1<<7
   /// SpectrumStokesU
-#define GYOTO_QUANTITY_SPECTRUM_STOKES_U     256
+#define GYOTO_QUANTITY_SPECTRUM_STOKES_U     1<<8
   /// SpectrumStokesV
-#define GYOTO_QUANTITY_SPECTRUM_STOKES_V     512
+#define GYOTO_QUANTITY_SPECTRUM_STOKES_V     1<<9
   /// Spectrum: &int;<SUB>&nu;<SUB>1</SUB></SUB><SUP>&nu;<SUB>2</SUB></SUP>I<SUB>&nu;</SUB> d&nu; in each frequency channel in Scenery::screen_.
-#define GYOTO_QUANTITY_BINSPECTRUM 1024
+#define GYOTO_QUANTITY_BINSPECTRUM           1<<10
+  /// NbCrossEqPlane: number of equatorial plane crossings
+#define GYOTO_QUANTITY_NBCROSSEQPLANE        1<<11
   /* Astrobj-specific */
   /// User1: Gyoto::Astrobj specific Gyoto::Quantity_t
-#define GYOTO_QUANTITY_USER1        32768
+#define GYOTO_QUANTITY_USER1                 1<<31
   /// User2: Gyoto::Astrobj specific Gyoto::Quantity_t
-#define GYOTO_QUANTITY_USER2        16384
+#define GYOTO_QUANTITY_USER2                 1<<30
   /// User3: Gyoto::Astrobj specific Gyoto::Quantity_t
-#define GYOTO_QUANTITY_USER3         8192
+#define GYOTO_QUANTITY_USER3                 1<<29
   /// User4: Gyoto::Astrobj specific Gyoto::Quantity_t
-#define GYOTO_QUANTITY_USER4         4096
+#define GYOTO_QUANTITY_USER4                 1<<28
   /// User5: Gyoto::Astrobj specific Gyoto::Quantity_t
-#define GYOTO_QUANTITY_USER5         2048
+#define GYOTO_QUANTITY_USER5                 1<<27
   /// Bitwise or of all spectral quantities
 #define GYOTO_QUANTITY_SPECTRAL (GYOTO_QUANTITY_SPECTRUM | GYOTO_QUANTITY_SPECTRUM_STOKES_Q | GYOTO_QUANTITY_SPECTRUM_STOKES_U | GYOTO_QUANTITY_SPECTRUM_STOKES_V | GYOTO_QUANTITY_BINSPECTRUM)
   /// Bitwise or of all the Stokes parameters
@@ -277,6 +279,20 @@ namespace Gyoto {
    */
 #define GYOTO_DEBUG_EXPR(a) GYOTO_DEBUG << #a << "=" << a << std::endl
 
+  /// Output expression value unconditionally
+  /**
+   * Output both code and value that code yield. For instance:
+   * \code
+   * int a=1, b=2;
+   * GYOTO_DEBUG_THIS_EXPR(a+b);
+   * \endcode
+   * will essentially output:
+   * \code
+   * DEBUG: <function signature>: a+b=3
+   * \endcode
+   */
+#define GYOTO_DEBUG_THIS_EXPR(a) GYOTO_DEBUG_THIS << #a << "=" << a << std::endl
+
   /// Output array content in debug mode
   /**
    * Output, only in debug, name and content of array.
@@ -301,9 +317,20 @@ namespace Gyoto {
       std::cerr << "," << a[_gyoto_debug_array_i] ;			\
     std::cerr << "]" << std::endl ;}
 
-  /// Display debug message
+  /// Display debug message (unconditionally)
   /**
-   * Message is deiplayed only if #GYOTO_DEBUG_MODE is true and is
+   * Message is prepended with the word "DEBUG:" and the signature of
+   * the function.
+   *
+   * \code
+   * GYOTO_DEBUG << "message" << endl;
+   * \endcode
+   */
+#define GYOTO_DEBUG_THIS std::cerr << "DEBUG: " << __PRETTY_FUNCTION__ << ": "
+
+  /// Display debug message (in debug mode)
+  /**
+   * Message is displayed only if #GYOTO_DEBUG_MODE is true and is
    * prepended with the word "DEBUG:" and the signature of the
    * function.
    *
@@ -311,7 +338,7 @@ namespace Gyoto {
    * GYOTO_DEBUG << "message" << endl;
    * \endcode
    */
-#define GYOTO_DEBUG  if (GYOTO_DEBUG_MODE) std::cerr << "DEBUG: " << __PRETTY_FUNCTION__ << ": "
+#define GYOTO_DEBUG  if (GYOTO_DEBUG_MODE) GYOTO_DEBUG_THIS
 
   /// Start debug-only block.
   /**
@@ -442,15 +469,15 @@ namespace Gyoto {
 /// \brief Gravitational constant (cgs: cm^3 * g^-1 * s-2)
 #define GYOTO_G_CGS 6.67428e-8
 /// \brief G/c^2=6.67428e-11/299792458.^2
-#define GYOTO_G_OVER_C_SQUARE 7.426138e-28
+#define GYOTO_G_OVER_C_SQUARE 7.4261380161175445989e-28
 /// \brief G/c^2 in cgs units
-#define GYOTO_G_OVER_C_SQUARE_CGS 7.426138e-29
+#define GYOTO_G_OVER_C_SQUARE_CGS 7.4261380161175445989e-29
 /// \brief Planck's constant (h) in SI (J.s=kg.m^2/s) 
 #define GYOTO_PLANCK 6.62606896e-34
 /// \brief Planck's constant (h) in c.g.s (g.cm^2/s) 
 #define GYOTO_PLANCK_CGS 6.62606896e-27
 /// \brief h/c^2 in SI (kg.s)
-#define GYOTO_PLANCK_OVER_C_SQUARE 7.372496e-51
+#define GYOTO_PLANCK_OVER_C_SQUARE 7.3724959997591407964e-51
 /// \brief Boltzmann's constant (k) in SI (J/K)
 #define GYOTO_BOLTZMANN 1.3806504e-23
 /// \brief Boltzmann's constant (k) in cgs (erg/K)
@@ -458,7 +485,7 @@ namespace Gyoto {
 /// \brief Stefan-Boltzmann's constant (sigma) in cgs (erg/cm2/s/K4)
 #define GYOTO_STEFANBOLTZMANN_CGS 5.670373e-5
 /// \brief h/k (K.s = K/Hz)
-#define GYOTO_PLANCK_OVER_BOLTZMANN 4.7992373e-11
+#define GYOTO_PLANCK_OVER_BOLTZMANN 4.7992373449498869688e-11
 /// \brief ideal gas constant R in SI
 #define GYOTO_GAS_CST 8.3144621
 /// \brief ideal gas constant R in erg/(K mol)
@@ -517,6 +544,24 @@ namespace Gyoto {
 /// \brief Convert from eV to Hz
 #define GYOTO_eV2Hz 2.417989348e+14
 
+//\}
+
+//\{
+/**
+ *\name Observer kind
+ */
+/// \brief Type for observer kind
+#define obskind_t unsigned int
+/// \brief ObserverAtInfinity
+#define GYOTO_OBSKIND_ATINFINITY         0
+/// \brief KeplerianObserver
+#define GYOTO_OBSKIND_KEPLERIAN          1
+/// \brief ZAMO
+#define GYOTO_OBSKIND_ZAMO               2
+/// \brief VelocitySpecified
+#define GYOTO_OBSKIND_VELOCITYSPECIFIED  3
+/// \brief FullySpecified
+#define GYOTO_OBSKIND_FULLYSPECIFIED     4
 //\}
 
 /// \brief Stringify macro content

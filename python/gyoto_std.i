@@ -1,5 +1,5 @@
 /*
-    Copyright 2014-2018 Thibaut Paumard
+    Copyright 2014-2019 Thibaut Paumard
 
     This file is part of Gyoto.
 
@@ -33,6 +33,23 @@ using namespace Gyoto;
 %array_class(unsigned long, array_unsigned_long)
 %array_class(size_t, array_size_t)
 
+// This will be called upon extension initialization
+%init {
+#ifdef SWIGPYTHON
+  import_array();
+#endif
+ }
+
+// Worldline::getCartesian is enough
+%ignore Gyoto::Astrobj::Star::getCartesian(double const * const dates,
+                                           size_t const n_dates,
+                                           double * const x,
+                                           double * const y,
+                                           double * const z,
+                                           double * const xprime=NULL,
+                                           double * const yprime=NULL,
+                                           double * const zprime=NULL);
+
 // Typemaps to translate SmartPointer to specific classes
 GyotoSmPtrTypeMapClassDerived(Astrobj, UniformSphere)
 GyotoSmPtrTypeMapClassDerived(Astrobj, Star)
@@ -58,6 +75,7 @@ GyotoSmPtrTypeMapClassDerived(Astrobj, XillverReflection)
 GyotoSmPtrTypeMapClassDerived(Astrobj, Jet)
 GyotoSmPtrTypeMapClassDerived(Astrobj, Blob)
 GyotoSmPtrTypeMapClassDerived(Astrobj, FlaredDiskSynchrotron)
+GyotoSmPtrTypeMapClassDerived(Astrobj, ThickDisk)
 
 GyotoSmPtrTypeMapClassDerived(Metric, KerrBL)
 GyotoSmPtrTypeMapClassDerived(Metric, KerrKS)
@@ -90,12 +108,11 @@ GyotoSmPtrClassDerived(Astrobj, UniformSphere)
 }
 
 %extend Gyoto::Astrobj::Complex {
-  Gyoto::Astrobj::Generic * __getitem__ (size_t i) {
+  Gyoto::SmartPointer<Gyoto::Astrobj::Generic> __getitem__ (size_t i) {
     if (i >= ($self)->getCardinal()) {
       throw myCplxIdxExcept();
     }
-    Gyoto::Astrobj::Generic * res = ($self)->operator[](i);
-    res -> incRefCount();
+    Gyoto::SmartPointer<Gyoto::Astrobj::Generic> res = ($self)->operator[](i);
     return res;
   }
  };
@@ -130,15 +147,41 @@ GyotoSmPtrClassDerived(Astrobj, XillverReflection)
 GyotoSmPtrClassDerived(Astrobj, Jet)
 GyotoSmPtrClassDerived(Astrobj, Blob)
 GyotoSmPtrClassDerived(Astrobj, FlaredDiskSynchrotron)
+GyotoSmPtrClassDerived(Astrobj, ThickDisk)
 
 
+%exception Gyoto::Metric::Complex::__getitem__ {
+  try {
+    $action ;
+  } catch (myCplxIdxExcept e) {
+    SWIG_exception_fail(SWIG_IndexError, "Index out of bounds");
+  }
+}
 
-GyotoSmPtrClassDerived(Metric, KerrBL)
-GyotoSmPtrClassDerived(Metric, KerrKS)
-GyotoSmPtrClassDerived(Metric, Minkowski)
-GyotoSmPtrClassDerived(Metric, ChernSimons)
-GyotoSmPtrClassDerived(Metric, RezzollaZhidenko)
-GyotoSmPtrClassDerived(Metric, Hayward)
+%extend Gyoto::Metric::Complex {
+  Gyoto::SmartPointer<Gyoto::Metric::Generic> __getitem__ (size_t i) {
+    if (i >= ($self)->getCardinal()) {
+      throw myCplxIdxExcept();
+    }
+    Gyoto::SmartPointer<Gyoto::Metric::Generic> res = ($self)->operator[](i);
+    return res;
+  }
+ };
+%extend Gyoto::Metric::Complex {
+  void __setitem__(int i, Gyoto::Metric::Generic * p) {
+    ($self)->operator[](i)=p;
+  }
+ };
+GyotoSmPtrClassDerivedPtrHdr(Metric, Complex, ComplexMetric, GyotoComplexMetric.h)
+
+
+GyotoSmPtrClassDerivedMetric(Shift)
+GyotoSmPtrClassDerivedMetric(KerrBL)
+GyotoSmPtrClassDerivedMetric(KerrKS)
+GyotoSmPtrClassDerivedMetric(Minkowski)
+GyotoSmPtrClassDerivedMetric(ChernSimons)
+GyotoSmPtrClassDerivedMetric(RezzollaZhidenko)
+GyotoSmPtrClassDerivedMetric(Hayward)
 
 GyotoSmPtrClassDerivedHdr(Spectrum, PowerLaw, GyotoPowerLawSpectrum.h)
 GyotoSmPtrClassDerivedHdr(Spectrum, BlackBody, GyotoBlackBodySpectrum.h)

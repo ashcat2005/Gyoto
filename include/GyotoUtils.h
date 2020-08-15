@@ -118,6 +118,31 @@ namespace Gyoto {
   double bessk(int nn, double xx);///< Modified Bessel function
 
   double hypergeom (double kappaIndex, double thetae); ///< Gauss hypergeometric 2F1 term for kappa-distribution synchrotron
+
+  /// Tranform from Cartesian 3-position to spherical 3-position
+  void cartesianToSpherical(double const cpos[3], double spos[3]);
+  /// Tranform from spherical 3-position to Cartesian 3-position
+  void sphericalToCartesian(double const spos[3], double cpos[3]);
+
+  /// Invert 4x4 matrix
+  /**
+   * \param[in] IN_ARRAY2 the 4×4 matrix to invert
+   * \param[out] ARGOUT_ARRAY2 the invert matrix of IN_ARRAY2
+   */
+  // Keep argument names for swig!
+  void matrix4Invert(double ARGOUT_ARRAY2[4][4], double const IN_ARRAY2[4][4]);
+
+  /// Invert 4x4 circular spacetime metric 
+  /**
+   * A circular spacetime metric (in the right coordinate system)
+   *   - is symmetrical (like all metric matrices);
+   *   - has only 6 non-zero element: the diagonal and the corners.
+   *
+   * \param[in] IN_ARRAY2 the 4×4 matrix to invert
+   * \param[out] ARGOUT_ARRAY2 the invert matrix of IN_ARRAY2
+   */
+  // Keep argument names for swig!
+  void matrix4CircularInvert(double ARGOUT_ARRAY2[4][4], double const IN_ARRAY2[4][4]);
 }
 
 #endif

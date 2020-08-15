@@ -316,9 +316,21 @@ class Gyoto::Scenery
   void astrobj(SmartPointer<Astrobj::Generic>); ///< Set ph_.obj_
 
 
+  /**
+   * \brief Get clone of template Photon
+   */
   SmartPointer<Photon> clonePhoton() const; ///< Clone the internal Photon
-  SmartPointer<Photon> clonePhoton(size_t i, size_t j); ///< Clone the internal Photon
-  SmartPointer<Photon> clonePhoton(double a, double d); ///< Clone the internal Photon
+
+  /**
+   * \brief Get clone of template Photon, intitializing it to pixel
+   */
+  SmartPointer<Photon> clonePhoton(size_t i, size_t j);
+
+  /**
+   * \brief Get clone of template Photon, intitializing it to direction
+   */
+  SmartPointer<Photon> clonePhoton(double a, double d);
+
   void updatePhoton(); ///< Update values in cached Photon
 
   double delta() const ; ///< Get default step in geometrical units
@@ -403,11 +415,16 @@ class Gyoto::Scenery
   /// Passed to #ph_
   double relTol()const;
 
+  /// Passed to #ph_
+  void maxCrossEqplane(double);
+  /// Passed to #ph_
+  double maxCrossEqplane()const;
+  
   void secondary (bool sec) ; ///< Set ph_.secondary_
   bool secondary () const ; ///< Get ph_.secondary_
 
-  void parallelTransport (bool sec) ; ///< Set ph_.secondary_
-  bool parallelTransport () const ; ///< Get ph_.secondary_
+  void parallelTransport (bool pt) ; ///< Set ph_.parallel_transport_
+  bool parallelTransport () const ; ///< Get ph_.parallel_transport_
 
   void maxiter (size_t miter) ; ///< Set ph_.maxiter_
   size_t maxiter () const ; ///< Get ph_.maxiter_

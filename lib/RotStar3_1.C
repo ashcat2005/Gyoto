@@ -1,5 +1,5 @@
 /*
-    Copyright 2011-2014, 2016, 2018 Frederic Vincent & Thibaut Paumard
+    Copyright 2011-2014, 2016, 2018-2020 Frederic Vincent & Thibaut Paumard
 
     This file is part of Gyoto.
 
@@ -76,14 +76,16 @@ RotStar3_1* RotStar3_1::clone() const {
 
 RotStar3_1::~RotStar3_1() 
 {
-  const Map& mp=star_ -> get_mp();
-  const Mg3d* mg=mp.get_mg();
-  const Map* mpp=&mp;
-  delete star_;
-  delete mpp;
-  delete mg;
+  if (star_) {
+    const Map& mp=star_ -> get_mp();
+    const Mg3d* mg=mp.get_mg();
+    const Map* mpp=&mp;
+    delete star_;
+    delete mpp;
+    delete mg;
+  }
   
-  delete [] filename_;
+  if (filename_) delete [] filename_;
 
   if (debug()) cout << "RotStar3_1 Destruction" << endl;
 }
@@ -108,6 +110,7 @@ void RotStar3_1::fileName(char const * lorene_res) {
     delete mpp;
     delete mg;
   }
+  if (!lorene_res) return;
 
   filename_ = new char[strlen(lorene_res)+1];
   strcpy(filename_,lorene_res);
@@ -132,7 +135,7 @@ int RotStar3_1::integKind() const { return integ_kind_; }
 bool RotStar3_1::genericIntegrator() const {return !integ_kind_;}
 void RotStar3_1::genericIntegrator(bool t) {integ_kind_=!t;}
 
-int RotStar3_1::diff(state_t const &coord, state_t &res) const
+int RotStar3_1::diff(state_t const &coord, state_t &res, double /* mass */) const
 {
   //4-DIMENSIONAL INTEGRATION
   //NB: this diff is only called by Generic::RK4

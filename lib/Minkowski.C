@@ -1,5 +1,5 @@
 /*
-    Copyright 2014 Thibaut Paumard
+    Copyright 2014, 2015, 2019-2020 Thibaut Paumard & Frédéric Vincent
 
     This file is part of Gyoto.
 
@@ -178,7 +178,7 @@ double Minkowski::christoffel(const double pos[8], const int alpha, const int mm
 
 }
 
-void Minkowski::observerTetrad(string const obskind,
+void Minkowski::observerTetrad(obskind_t obskind,
 			       double const pos[4], double fourvel[4],
 			       double screen1[4], double screen2[4], 
 			       double screen3[4]) const{
@@ -186,7 +186,7 @@ void Minkowski::observerTetrad(string const obskind,
     GYOTO_ERROR("In Minkowski::observerTetrad: "
 	       "coordinates should be spherical-like");
   }
-  if (obskind=="KeplerianObserver"){
+  if (obskind==GYOTO_OBSKIND_KEPLERIAN){
     double gtt = gmunu(pos,0,0),
       grr      = gmunu(pos,1,1),
       gthth    = gmunu(pos,2,2),
@@ -215,9 +215,6 @@ void Minkowski::observerTetrad(string const obskind,
       screen2[ii]=e2[ii];
       screen3[ii]=e3[ii];
     }
-  }else{
-    GYOTO_ERROR("In Minkowski::observerTetrad "
-	       "unknown observer kind");
   }
   Generic::observerTetrad(obskind,pos,fourvel,screen1,screen2,screen3);
 }
@@ -228,4 +225,141 @@ void Minkowski::spherical(bool t) {
 
 bool Minkowski::spherical() const {
   return coordKind() == GYOTO_COORDKIND_SPHERICAL;
+}
+
+int Minkowski::diff(const state_t &xi,
+		    state_t &dxdt,
+		    double mass) const {
+  // Check input
+  if (xi.size()<8) GYOTO_ERROR("x should have at least 8 elements");
+  if (xi.size() != dxdt.size())
+    GYOTO_ERROR("x.size() should be the same as dxdt.size()");
+
+  // If not Keplerian or if null geodesic, use generic implementation
+  if (!keplerian_ || !mass)
+    return Generic::diff(xi, dxdt, mass);
+
+  // We are computing a Keplerian, time-like geodesic.
+
+  // There is no parallel transport for time-like geodesics!
+  if (xi.size() > 8) GYOTO_ERROR("No parallel transport for time-like geodesics");
+
+  // x[4:8] is actually dx[0:4]/dt
+  dxdt[0]=xi[4];
+  dxdt[1]=xi[5];
+  dxdt[2]=xi[6];
+  dxdt[3]=xi[7];
+
+  // Now the actual equation of motion: d²x/dt²=-ur/r²
+
+  double t, x, y, z, tdot, xdot, ydot, zdot,
+    r, theta, phi, rdot, thetadot, phidot,
+    tdotdot, xdotdot, ydotdot, zdotdot,
+    rdotdot, thetadotdot, phidotdot, r3, tdot3;
+  double sth, cth, sph, cph;
+
+  t=xi[0]; tdot=xi[4];
+
+  // Convert to Cartesian
+
+  switch (coordKind()) {
+  case GYOTO_COORDKIND_CARTESIAN:
+    x=xi[1];
+    y=xi[2];
+    z=xi[3];
+    xdot=xi[5];
+    ydot=xi[6];
+    zdot=xi[7];
+    r3=pow(x*x+y*y+z*z, 1.5);
+    break;
+  case GYOTO_COORDKIND_SPHERICAL:
+    r=xi[1];
+    theta=xi[2];
+    phi=xi[3];
+    rdot=xi[5];
+    thetadot=xi[6];
+    phidot=xi[7];
+    r3=r*r*r;
+    sincos(theta, &sth, &cth);
+    sincos(phi, &sph, &cph);
+    x=r*sth*cph;
+    y=r*sth*sph;
+    z=r*cth;
+    xdot=rdot*sth*cph+r*thetadot*cth*cph-r*phidot*sth*sph;
+    ydot=rdot*sth*sph+r*thetadot*cth*sph+r*phidot*sth*cph;
+    zdot=rdot*cth-r*thetadot*sth;
+    break;
+  default:
+    GYOTO_ERROR("unimplemented COORDKIND");
+  }
+
+  if (r3==0) return 1;
+
+  // Compute second derivatives according to Newton
+
+  // First tdotdot
+  /*
+    Newton's law is yields:,
+     xi'' = -xi / r³ for 1 <= i <= 3 (1)
+    We also have
+     xi'  = xidot/tdot
+     xi'' = d(xidot/tdot)/dt = d(xidot/tdot)/dtau / tdot
+     xi'' = (xidotdot*tdot - tdotdot*xidot) / tdot³
+    thus we can rewrite Newton's law (1) as
+     xidotdot*tdot - tdotdot*xidot = -xi * tdot³ / r³ for i in 1..3 (2)
+    We also know that the norm of the quadri velocity is -1:
+     -tdot² + sum(xidot²) = -1    (3)
+    Derivating (3), it comes:
+     tdot*tdotdot = sum(xidot*xidotdot) (4)
+    Multiplying (2) by xidot and summing over 1..3:
+     tdot*sum(xidot*xidotdot)-tdotdot*sum(xidot²)=-(tdot³/r³)*sum(xi*xidot)
+    Thanks to (4), we can replace sum(xidot*xidotdot) by tdot*tdotdot,
+    and then factorize tdotdot on the left-hand side:
+     tdotdot*(tdot²-sum(xidot²))=-(tdot³/r³)*sum(xi*xidot)
+    We recognize (4) and finally:
+     tdotdot=-(tdot³/r³)*sum(xi*xidot)
+     */
+  tdot3=tdot*tdot*tdot;
+  tdotdot=-tdot3*(x*xdot+y*ydot+z*zdot)/r3;
+
+  // Then the rest
+  /*
+    We use (2) again to get xidotdot:
+    xidotdot=(-xi*tdot³/r³+tdotdot*xidot)/tdot
+  */
+  xdotdot=(-x*tdot3/r3+tdotdot*xdot)/tdot;
+  ydotdot=(-y*tdot3/r3+tdotdot*ydot)/tdot;
+  zdotdot=(-z*tdot3/r3+tdotdot*zdot)/tdot;
+
+
+  // Convert back to COORDKIND
+
+  dxdt[4]=tdotdot;
+  switch (coordKind()) {
+  case GYOTO_COORDKIND_CARTESIAN:
+    dxdt[5]=xdotdot;
+    dxdt[6]=ydotdot;
+    dxdt[7]=zdotdot;
+    break;
+  case GYOTO_COORDKIND_SPHERICAL:
+    rdotdot=(xdotdot*x+ydotdot*y+zdotdot*z
+	     +xdot*xdot+ydot*ydot+zdot*zdot
+	     -rdot*rdot)/r;
+    thetadotdot=(
+		 (z*rdotdot-zdotdot*r)
+		 -((z*rdot-zdot*r)*(2.*rdot*r*r*r-zdot*z*r*r-z*z*rdot*r)
+		   /(r*r*r*r-z*z*r*r))
+		 )
+      *pow(r*r*r*r-z*z*r*r, -0.5);
+    phidotdot=((ydotdot*x-y*xdotdot)*(x*x+y*y)
+	       -2.*(ydot*x-y*xdot)*(x*xdot+y*ydot))
+      /((x*x+y*y)*(x*x+y*y));
+    dxdt[5]=rdotdot;
+    dxdt[6]=thetadotdot;
+    dxdt[7]=phidotdot;
+    break;
+  default:
+    GYOTO_ERROR("unimplemented COORDKIND");
+  }
+  return 0;
 }

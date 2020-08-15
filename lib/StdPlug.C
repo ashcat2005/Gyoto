@@ -18,6 +18,8 @@
  */
 
 // include Metric headers
+#include "GyotoComplexMetric.h"
+#include "GyotoShift.h"
 #include "GyotoKerrBL.h"
 #include "GyotoKerrKS.h"
 #include "GyotoMinkowski.h"
@@ -41,6 +43,7 @@
 #include "GyotoThinDiskIronLine.h"
 #include "GyotoEquatorialHotSpot.h"
 #include "GyotoJet.h"
+#include "GyotoThickDisk.h"
 #include "GyotoBlob.h"
 #include "GyotoFlaredDiskSynchrotron.h"
 
@@ -65,6 +68,8 @@ using namespace Gyoto;
 
 extern "C" void __GyotostdplugInit() {
   // Register Metrics
+  Metric::Register("Complex",   &(Metric::Subcontractor<Metric::Complex>));
+  Metric::Register("Shift", &(Metric::Subcontractor<Metric::Shift>));
   Metric::Register("KerrBL", &(Metric::Subcontractor<Metric::KerrBL>));
   Metric::Register("KerrKS", &(Metric::Subcontractor<Metric::KerrKS>));
   Metric::Register("Minkowski", &(Metric::Subcontractor<Metric::Minkowski>));
@@ -109,6 +114,8 @@ extern "C" void __GyotostdplugInit() {
 		    &(Astrobj::Subcontractor<Astrobj::DirectionalDisk>));
   Astrobj::Register("Jet",
 		    &(Astrobj::Subcontractor<Astrobj::Jet>));
+  Astrobj::Register("ThickDisk",
+		    &(Astrobj::Subcontractor<Astrobj::ThickDisk>));
   Astrobj::Register("Blob",
 		    &(Astrobj::Subcontractor<Astrobj::Blob>));
   Astrobj::Register("XillverReflection",

@@ -24,9 +24,11 @@ The most recent packages will install about everything in Gyoto with
 ### Ubuntu
 
 Gyoto is also part of Ubuntu at least since Raring (13.04). Updated
-versions are provided on our [personal package archive (PPA)]
-(https://launchpad.net/~paumard/+archive/ubuntu/gyoto/). Follow
-instructions on that page to add this PPA to your system.
+versions are sometimes provided on our [personal package archive
+(PPA)] (https://launchpad.net/~paumard/+archive/ubuntu/gyoto/). Check
+what version is available there compared to what is available for your
+version of Ubuntu and follow instructions on that page to add this PPA
+to your system.
 
 You can get a list of available packages with
 
@@ -50,39 +52,20 @@ its MPI variant, then Gyoto with the same variant:
     sudo port install Boost +openmpi
     sudo port install Gyoto +openmpi
 
-
-## 1- Downloading the source code
+## 1- Building from source: installing the dependencies
 
 If Gyoto is not packaged for your system or if you prefer to build
 from source, read on.
 
-The source code is available from
-[Github](https://github.com/gyoto/Gyoto):
-
-    git clone git://github.com/gyoto/Gyoto.git
-
-Then the build process is, in a nutshell, after having installed the
-dependencies:
-
-    ./git-post-merge
-    ./configure
-    make
-    sudo make install
-    sudo ldconfig
-
-The rest of this file details each step.
-
-
-## 2- Installing the dependencies
-
-Please refer to [BUGS.md](BUGS.md) for known bugs in some versions of the
-following dependencies.
+The first step is to install the dependencies. Please refer to
+[BUGS.md](BUGS.md) for known bugs in some versions of the following
+dependencies.
 
 Gyoto requires:
 
    - a C++ compiler. GCC 4.9 and above work very well. Several
      features require the C++11 standard. Clang/LLVM is discouraged,
-     see [BUGS.md](BUGS.md).       
+     see [BUGS.md](BUGS.md).
    - xercesc-3 (recommended, required for the executable):
        http://xerces.apache.org/xerces-c/
    - cfitsio   (required for the executable and some of the Astrobj):
@@ -108,11 +91,12 @@ Gyoto requires:
      Yorick users will also need the yorick-yutils add-on
      (https://github.com/frigaut/yorick-yutils) and may need to install
      the yorick-dev package (in particulat Debian/Ubuntu users).
-   - Python (optional, provides an interface to the Python interpreted
-     language, allowing to write Gyoto scripts). Python 2.7 and 3.4
-     have been tested. For building the Python bindings, the Python
-     development files are naturally required (sometimes found in the
-     python-dev or python3-dev package), as well as NumPy and Swig-2.0:
+   - Python 3 (optional, provides an interface to the Python
+     interpreted language, allowing to write Gyoto scripts). Python
+     3.7 and 3.8 have been tested. For building the Python bindings,
+     the Python development files are naturally required (sometimes
+     found in the python-dev or python3-dev package), as well as NumPy
+     and Swig-2.0:
        https://www.python.org/
        http://www.numpy.org/
        http://www.swig.org/
@@ -121,10 +105,41 @@ Gyoto requires:
      scripts, or contact us is stability of the API is important for
      you.
    - LORENE (optional, the libgyoto-lorene plug-in can be built later):
-       http://www.lorene.obspm.fr/
+       https://www.lorene.obspm.fr/
      On some systems, LORENE must be built with -fPIC (GYOTO as well,
      but this is the default).
    - developers may need the GNU autotools: autoconf, automake, libtool.
+
+For Debian and its derivatives (incl. Ubuntu), you can install all
+those dependencies with:
+
+    sudo apt-get install build-essential yorick-dev yorick-yutils \
+    libxerces-c-dev libcfitsio-dev libudunits2-dev libboost-dev \
+    libboost-mpi-dev libflint-arb-dev libflint-dev mpi-default-dev \
+    python3-dev python3-setuptools swig3.0 python3-numpy python3-matplotlib \
+    doxygen pkg-config liblorene-dev lorene-codes-src gfortran g++
+
+## 2- Downloading the source code
+
+The source code is available from
+[Github](https://github.com/gyoto/Gyoto):
+
+    git clone https://github.com/gyoto/Gyoto.git
+
+(This obviously requires git to be installed on your system, on Debian
+and derivtives use `sudo apt-get install git`).
+
+Then the build process is, in a nutshell, after having installed the
+dependencies:
+
+    ./git-post-merge
+    ./configure
+    make
+    sudo make install
+    sudo ldconfig
+
+The rest of this file details each step.
+
 
 ## 3- Fixing the timestamps
 
@@ -157,7 +172,7 @@ the available options:
 
 ARBLIB is known to be installed under various names depending on the
 Linux distribution. If using ARBLIB (see "Installing the dependencies"
-above), you may need to set the --with-arblib-ldflags variable to the
+above), you may need to set the `--with-arblib-ldflags` variable to the
 correct name, e.g.
 
     ./configure --with-arblib-ldflags=-larb
@@ -165,7 +180,7 @@ correct name, e.g.
 The standard GNU INSTALL file is provided next to this file and documents
 the most standard and obscure features.
 
-The --enable-release option is reserved for pre-compiled package
+The `--enable-release` option is reserved for pre-compiled package
 maintainers. In short, don't use it, it is for us alone. Without this
 option, the library name will contain "-unreleased". This is to allow
 users to compile new versions without overriding the system-provided
@@ -194,6 +209,11 @@ CFITIO are in `/opt/local`:
                 CPPFLAGS=-I/opt/local/include \
                 LDFLAGS=-L/opt/local/lib
 
+On Debian or Ubuntu, with all the dependencies installed as above,
+this should do:
+
+    ./configure --with-arblib \
+    --with-lorene=/usr/lib/`dpkg-architecture -qDEB_HOST_MULTIARCH`/lorene
 
 ## 5- Building Gyoto
 

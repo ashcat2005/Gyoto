@@ -75,13 +75,36 @@ namespace Gyoto {
    * GYOTO_PKGLIBDIR, or in
    * GYOTO_PKGLIBDIR/GYOTO_SOVERS/.
    *
-   * \param plugname Plug-in name.
-   * \param nofail Unless nofail evals to true, the inability to find
-   * a plug-in or to run the initialization function inside it throws
-   * an Gyoto::Error.
+   * \param[in] plugname C string Plug-in name.
+   *
+   * \param[in] nofail int Unless nofail evals to true, the inability
+   *            to find a plug-in or to run the initialization
+   *            function inside it throws an Gyoto::Error. If nofail
+   *            is 2 or more, such conditions are silently ignored. If
+   *            nofail is one, those conditions trigger a warning.
+   *
+   * \return void* handle to the dlopen'ed plug-in.
    */
-  void loadPlugin(   char const * const plugname, int nofail = 0);
+  void * loadPlugin(   char const * const plugname, int nofail = 0);
+
+  /**
+   * \brief Check whether a given plug-in has already been loaded
+   *
+   * \param[in] plugname std::string Plug-in name.
+   */
   bool havePlugin(std::string plugname);
+
+  /**
+   * \brief Load a plugin by name, only if not loaded yet
+   *
+   * \param[in] plugname std::string Plug-in name.
+   *
+   * \param[in] nofail int Unless nofail evals to true, the inability
+   *            to find a plug-in or to run the initialization
+   *            function inside it throws an Gyoto::Error. If nofail
+   *            is 2 or more, such conditions are silently ignored. If
+   *            nofail is one, those conditions trigger a warning.
+   */
   void requirePlugin(std::string plugname, int nofail = 0);
 }
 

@@ -10,7 +10,7 @@
  */
 
 /*
-    Copyright 2011-2016 Frederic Vincent, Thibaut Paumard
+    Copyright 2011-2016, 2018-2020 Frederic Vincent, Thibaut Paumard
 
     This file is part of Gyoto.
 
@@ -166,6 +166,15 @@ class Gyoto::Metric::Generic
   double mass_;     ///< Mass yielding geometrical unit (in kg).
   int coordkind_; ///< Kind of coordinates (cartesian-like, spherical-like, unspecified)
 
+  /**
+   * \brief Whether some virtual methods are implemented
+   *
+   * The default implementations of some methods call
+   * one-another. This member is used internally to avoid infinite
+   * recursion.
+   */
+  int __defaultfeatures;
+
  protected:
   double delta_min_; ///< Minimum integration step for the adaptive integrator
   double delta_max_; ///< Maximum integration step for the adaptive integrator
@@ -220,8 +229,8 @@ class Gyoto::Metric::Generic
   // ---------------------
   virtual Generic * clone() const ; ///< Virtual copy constructor
 
-  void mass(const double);        ///< Set mass used in unitLength()
-  void mass(const double, const std::string &unit);        ///< Set mass used in unitLength()
+  virtual void mass(const double);        ///< Set mass used in unitLength()
+  virtual void mass(const double, const std::string &unit);        ///< Set mass used in unitLength()
 
   // Accessors
 
@@ -339,6 +348,19 @@ class Gyoto::Metric::Generic
 				double dir=1.) const ;
 
   /**
+   * \brief Yield ZAMO velocity at a given position
+   *
+   * Give the velocity of a zero angular momentul observer (whatever
+   * is closest to "at rest"). The default implementation simply
+   * projects (1, 0, 0, 0) othogonally along ephi and normalizes it,
+   * thus ensuring that vel is orthogonal to ephi.
+   *
+   * \param pos input: position,
+   * \param vel output: velocity,
+   */
+  virtual void zamoVelocity(double const pos[4], double vel[4]) const ;
+
+  /**
    * Set coord[4] so that the 4-velocity coord[4:7] is lightlike,
    * i.e. of norm 0. There may be up to two solutions. coord[4] is set
    * to the hightest. The lowest can be retrieved using
@@ -364,6 +386,30 @@ class Gyoto::Metric::Generic
   virtual void nullifyCoord(double coord[8], double& tdot2) const;
   ///< Set tdot (coord[4]) such that coord is light-like and return other possible tdot
 
+  /**
+   * \brief Normalize fourvelvel to -1
+   *
+   * First computes threevel as xiprime=xidot/x0dot for i in {1, 2,
+   * 3}, then computes x0dot using SyPrimeToTdot, then computes again
+   * xidot as xidot=xiprime*x0dot.
+   *
+   * \param[in,out] coord 8-position, coord[4-7] will be set according
+   * to the other elements;
+   */
+  virtual void normalizeFourVel(double coord[8]) const;
+
+  /**
+   * \brief Normalize fourvelvel to -1
+   *
+   * First computes threevel as xiprime=xidot/x0dot for i in {1, 2,
+   * 3}, then computes x0dot using SyPrimeToTdot, then computes again
+   * xidot as xidot=xiprime*x0dot.
+   *
+   * \param[in] pos 4-position;
+   * \param[in,out] fourvel 4-velocity, will be renormalized.
+   */
+  virtual void normalizeFourVel(double const pos[4], double fourvel[4]) const;
+
 
   /**
    * Compute the scalarproduct of the two quadrivectors u1 and u2 in
@@ -376,10 +422,37 @@ class Gyoto::Metric::Generic
   virtual double ScalarProd(const double pos[4],
 		    const double u1[4], const double u2[4]) const; ///< Scalar product
 
+  /**
+   * Compute the norm of the quadrivector u1 in
+   * this Metric, at point pos expressed in coordinate system sys.
+   * \param[in] pos 4-position;
+   * \param[in] u1 quadrivector;
+   * \return ||u1||
+   */
+  double norm(const double pos[4],
+		      const double u1[4]) const; ///< Scalar product
+
+  ///\brief multiply vector by scalar
+  void multiplyFourVect(double vect[4], double a) const;
+
+  ///\brief add second vector to first one
+  void addFourVect(double u1[4], double const u2[4]) const;
+
+  ///\brief project u1 orthogonally to u2 at pos
+  void projectFourVect(double const pos[4], double u1[4], double const u2[4]) const;
+
+  /**
+   * \brief Computes dual 1-form
+   * Compute the dual 1-form of 4-vector.
+   * \param IN_ARRAY1_1 4-position;
+   * \param IN_ARRAY1_2 quadrivector;
+   * \param[out] ARGOUT_ARRAY1 output 1-form
+   */
+  void dualOneForm(double const IN_ARRAY1_1[4], double const IN_ARRAY1_2[4], double ARGOUT_ARRAY1[4]) const ;
 
   /**
    * \brief Computes the orthonormal local tetrad of the observer
-   * 
+   *
    * \param obskind  input: kind of observer (eg: "ZAMO","KeplerianObserver"...)
    * \param pos      input: position,
    * \param fourvel output: observer 4-velocity (norm -1)
@@ -387,11 +460,38 @@ class Gyoto::Metric::Generic
    * \param screen2 output: second vector in the screen plane
    * \param screen3 output: vector normal to the screen
    */
-  virtual void observerTetrad(std::string const obskind,
+  virtual void observerTetrad(obskind_t obskind,
 			      double const pos[4], double fourvel[4],
 			      double screen1[4], double screen2[4],
 			      double screen3[4]) const ;
 
+  /**
+   * \brief Computes the orthonormal local tetrad of the observer
+   *
+   * \param[in]  pos     position,
+   * \param[in]  fourvel observer 4-velocity (norm -1)
+   * \param[out] screen1 first vector in the screen plane
+   * \param[out] screen2 second vector in the screen plane
+   * \param[out] screen3 vector normal to the screen
+   */
+  virtual void observerTetrad(double const pos[4], double fourvel[4],
+			      double screen1[4], double screen2[4],
+			      double screen3[4]) const ;
+
+  /**
+   * \brief Apply Gram-Schmidt orthonormalization to a basis
+   *
+   * On input, u0 to u3 must be four non-zero norm, independent
+   * 4-vectors. On output, they will form an orthonormal basis.
+   *
+   * \param[in]     pos position,
+   * \param[in,out] u0 basis vector
+   * \param[in,out] u1 basis vector
+   * \param[in,out] u2 basis vector
+   * \param[in,out] u3 basis vector
+   */
+  void GramSchmidt(double const pos[4], double u0[4],
+		   double u1[4], double u2[4], double u3[4]) const;
   // Outputs
 
   /**
@@ -411,13 +511,48 @@ class Gyoto::Metric::Generic
    *
    * The default implementation calls double gmunu(const double * x, int mu, int nu) const.
    *
-   * \param[out] g  4x4 array to store the coeefficients
-   * \param[in] x  4-position at which to compute the coefficients;
+   * \param[out] ARGOUT_ARRAY2 (g) 4x4 array to store the coeefficients
+   * \param[in] IN_ARRAY1  (x) 4-position at which to compute the coefficients;
    * \return Metric coefficient g<SUB>&mu;,&nu;</SUB> at point x 
    */
-  virtual void gmunu(double g[4][4], double const pos[4]) const;
+  // Keep argument names for swig!
+  virtual void gmunu(double ARGOUT_ARRAY2[4][4], double const IN_ARRAY1[4]) const;
 
+  /**
+   * \brief Metric contravariant coefficients
+   *
+   * The default implementation calls Metric:: gmunu_up(double g[4][4], const double * pos) const
+   *
+   * \param x  4-position at which to compute the coefficient;
+   * \param mu 1st index of coefficient, 0&le;&mu;&le;3;
+   * \param nu 2nd index of coefficient, 0&le;&nu;&le;3;
+   * \return Metric coefficient g<SUP>&mu;,&nu;</SUP> at point x
+   */
+  virtual double gmunu_up(double const x[4], int mu, int nu) const;
 
+  /**
+   * \brief Metric contravariant coefficients
+   *
+   * The default implementation inverts the covariant coefficients matrix.
+   **/
+  // Keep argument names for swig!
+  virtual void gmunu_up(double ARGOUT_ARRAY2[4][4], const double IN_ARRAY1[4]) const;
+
+  /**
+   * \brief Derivatives of the metric covariant coefficients
+   *
+   * The default implementation evaluates them numerically. The gmunu
+   * matrix is assumed to be symmetrical but no other assumptions are
+   * made at the moment.
+   **/
+  // Keep argument names for swig!
+  virtual void jacobian(double ARGOUT_ARRAY3[4][4][4], const double IN_ARRAY1[4]) const;
+
+  /**
+   * \brief gmunu_up() and jacobian() in one go
+   **/
+  // Keep argument names for swig!
+  virtual void gmunu_up_and_jacobian(double ARGOUT_ARRAY2[4][4], double ARGOUT_ARRAY3[4][4][4], const double IN_ARRAY1[4]) const;
 
   /**
    * \brief Chistoffel symbol
@@ -478,8 +613,9 @@ class Gyoto::Metric::Generic
   /**
    * \brief F function such as dx/dt=F(x,cst)
    */
-  virtual int diff(state_t const &x, state_t &dxdt) const ;
+  virtual int diff(state_t const &x, state_t &dxdt, double mass) const ;
   /// Obsolete, update your code
+  virtual int diff(state_t const &x, state_t &dxdt)  const = delete;
   virtual int diff(const double y[8], double res[8]) const = delete ;
 
   /**

@@ -1,5 +1,5 @@
 /*
-    Copyright 2011-2015, 2018 Frederic Vincent, Thibaut Paumard
+    Copyright 2011-2015, 2018-2020 Frederic Vincent, Thibaut Paumard
 
     This file is part of Gyoto.
 
@@ -82,7 +82,7 @@ using namespace boost::numeric::odeint;
 /// Generic
 Worldline::IntegState::Generic::~Generic() {};
 Worldline::IntegState::Generic::Generic(Worldline *parent) :
-  SmartPointee(), line_(parent) {};
+  SmartPointee(), line_(parent), gg_(NULL) {};
 void
 Worldline::IntegState::Generic::init(){
   if (!line_) return;
@@ -111,7 +111,7 @@ void Worldline::IntegState::Generic::checkNorm(double coord[8])
      as tdot can diverge close to horizon (it's the case for
      NS integration eg where geodesic can come close to horizon)
      Then just check that norm/tdot does not diverge.
-   */ 
+   */
   if (fabs(norm_-normref_)/(coord[4]*coord[4])>normtol) {
     GYOTO_SEVERE << 
       "in Worldline::IntegState.C: "
@@ -125,9 +125,7 @@ void Worldline::IntegState::Generic::checkNorm(double coord[8])
 /// Legacy
 
 Worldline::IntegState::Legacy::Legacy(Worldline *parent) : Generic(parent)
-{
-  Legacy::init();
-}
+{}
 
 
 Worldline::IntegState::Legacy *
@@ -137,12 +135,25 @@ Worldline::IntegState::Legacy::clone(Worldline *newparent) const
 void
 Worldline::IntegState::Legacy::init(Worldline * line,
 				    const state_t &coord, const double delta) {
+  static bool need_warning = true;
+  if (need_warning) {
+    GYOTO_WARNING << "The Legacy integrator is deprecated and will be removed soon. "
+		  << "Please update your code to use the Boost integrators." << endl;
+    need_warning=false;
+  }
   Generic::init(line, coord, delta);
   coord_ = coord;
 
 }
 
-int Worldline::IntegState::Legacy::nextStep(state_t &coord, double h1max) {
+int Worldline::IntegState::Legacy::nextStep(state_t &coord, double &tau, double h1max) {
+  if (!gg_) init();
+  static bool need_warning=true;
+  if (need_warning) {
+    GYOTO_WARNING << "The Legacy integrator does not compute proper time." << endl;
+    need_warning=false;
+  }
+  tau=0.;
   if (parallel_transport_) GYOTO_ERROR("TODO: implement parallel transport");
   GYOTO_DEBUG << h1max << endl;
   int j;
@@ -152,7 +163,7 @@ int Worldline::IntegState::Legacy::nextStep(state_t &coord, double h1max) {
     if (gg_ -> myrk4_adaptive(line_,coord_,norm_,normref_,coord,delta_,h1, h1max)) return 1;
     delta_ = h1;
   }else{
-    if (gg_ -> myrk4(line_,coord_,delta_,coord)) return 1; 
+    if (gg_ -> myrk4(line_,coord_,delta_,coord)) return 1;
   }
   for (j=0;j<8;j++) coord_[j] = coord[j];
 
@@ -171,6 +182,7 @@ int Worldline::IntegState::Legacy::nextStep(state_t &coord, double h1max) {
 void Worldline::IntegState::Legacy::doStep(state_t const &coordin,
 					   double step, 
 					   state_t &coordout) {
+  if (!gg_) init();
   gg_ -> myrk4(line_, coordin, step, coordout); 
 }
 
@@ -189,14 +201,11 @@ Worldline::IntegState::Boost::Boost(Worldline*line, std::string type) :
   else if (type=="runge_kutta_dopri5") kind_=runge_kutta_dopri5;
   else if (type=="runge_kutta_cash_karp54_classic") kind_=runge_kutta_cash_karp54_classic;
   else GYOTO_ERROR("unknown integrator kind");
-  Boost::init();
 }
 
 Worldline::IntegState::Boost::Boost(Worldline*line, Kind type) :
   Generic(line), kind_(type)
-{
-  Boost::init();
-}
+{}
 
 void Worldline::IntegState::Boost::init()
 {
@@ -204,6 +213,7 @@ void Worldline::IntegState::Boost::init()
   Worldline* line=line_;
   Metric::Generic* met=line->metric();
   system_t system;
+  double mass=line->getMass();
 
   if (!met)
     system=[](const state_t &/*x*/,
@@ -212,11 +222,11 @@ void Worldline::IntegState::Boost::init()
       GYOTO_ERROR("Metric not set");
     };
   else
-    system=[this, line, met](const state_t &x,
-			     state_t &dxdt,
-			     const double t)
+    system=[this, line, met, mass](const state_t &x,
+				   state_t &dxdt,
+				   const double t)
       {
-	line->stopcond=met->diff(x, dxdt);
+	line->stopcond=met->diff(x, dxdt, mass);
       };
 
   if (line->getImin() > line->getImax() || !met) return;
@@ -242,15 +252,16 @@ Worldline::IntegState::Boost::init(Worldline * line,
 
 }
 
-int Worldline::IntegState::Boost::nextStep(state_t &coord, double h1max) {
+int Worldline::IntegState::Boost::nextStep(state_t &coord, double& tau, double h1max) {
+  if (!gg_) init();
   GYOTO_DEBUG << h1max << endl;
+  double dt=0;
   
   if (adaptive_) {
     double h1=delta_;
     double sgn=h1>0?1.:-1.;
     h1max=line_->deltaMax(&coord[0], h1max);
     double delta_min=line_->deltaMin();
-    double dt=0.;
 
     if (abs(h1)>h1max) h1=sgn*h1max;
     if (abs(h1)<delta_min) h1=sgn*delta_min;
@@ -272,7 +283,8 @@ int Worldline::IntegState::Boost::nextStep(state_t &coord, double h1max) {
     // cres is still fail, redo with delta_min using the fixed-step integrator
     if (cres==controlled_step_result::fail) {
       GYOTO_SEVERE << "delta_min is too large: " << delta_min << endl;
-      do_step_(coord, sgn*delta_min);
+      dt=sgn*delta_min;
+      do_step_(coord, dt);
     }
     // update adaptive step
     delta_=h1;
@@ -280,9 +292,11 @@ int Worldline::IntegState::Boost::nextStep(state_t &coord, double h1max) {
     // non adaptive case
     // do_Step_ is a lambda function encapsulating a fixed-step integrator
     // from Boost
-    do_step_(coord, delta_);
+    dt=delta_;
+    do_step_(coord, dt);
   }
 
+  tau += dt;
   checkNorm(&coord[0]);
 
   return line_->stopcond;
@@ -291,6 +305,7 @@ int Worldline::IntegState::Boost::nextStep(state_t &coord, double h1max) {
 void Worldline::IntegState::Boost::doStep(state_t const &coordin,
 					  double step, 
 					  state_t &coordout) {
+  if (!gg_) init();
   coordout = coordin;
 
   // We call the Boost stepper
